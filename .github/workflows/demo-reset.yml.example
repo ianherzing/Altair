@@ -1,0 +1,54 @@
+# ============================================================================
+# Nightly demo reset — rename this file to demo-reset.yml to enable.
+#
+# Re-runs seed.sql against your public demo Supabase project every 24h so
+# visitors can poke around without permanent damage.
+#
+# Setup:
+#   1. Create a production-mode Supabase project dedicated to the demo.
+#   2. In GitHub repo settings → Secrets and variables → Actions, add:
+#        DEMO_SUPABASE_DB_URL  — the "Connection string" from Supabase
+#                                 Database settings (includes the password)
+#   3. Rename this file to `demo-reset.yml` and commit.
+# ============================================================================
+
+name: Demo Reset
+
+on:
+  schedule:
+    - cron: '0 9 * * *'   # 9am UTC (~4am EST) daily
+  workflow_dispatch:       # allow manual trigger
+
+jobs:
+  reset:
+    name: Wipe and re-seed the demo project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Truncate user data
+        env:
+          DATABASE_URL: ${{ secrets.DEMO_SUPABASE_DB_URL }}
+        run: |
+          psql "$DATABASE_URL" <<'SQL'
+          TRUNCATE TABLE
+            monthly_snapshots,
+            assignments,
+            consultant_cost_rates,
+            consultant_skills,
+            project_comments,
+            projects,
+            consultants,
+            skills,
+            passion_areas,
+            holidays
+          RESTART IDENTITY CASCADE;
+          SQL
+
+      - name: Re-seed demo data
+        env:
+          DATABASE_URL: ${{ secrets.DEMO_SUPABASE_DB_URL }}
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/seed.sql

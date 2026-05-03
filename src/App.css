@@ -1,0 +1,342 @@
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 230px;
+  background: var(--bg-sidebar);
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-subtle);
+  transition: width 200ms ease;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+.sidebar-collapsed {
+  width: 56px;
+  padding: 1.5rem 0.5rem;
+  align-items: center;
+}
+
+.sidebar .logo-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 2rem;
+  padding: 0.5rem;
+}
+
+.sidebar .logo-container img {
+  height: 36px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.sidebar .logo-container .app-name {
+  font-size: 1.1rem;
+  font-weight: 300;
+  color: var(--brand-green);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+
+.sidebar-collapsed .logo-container .app-name {
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.sidebar-collapsed .logo-container .app-icon {
+  height: 40px;
+  width: 40px;
+  object-fit: contain;
+}
+
+.sidebar a {
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background 150ms, color 150ms;
+  white-space: nowrap;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sidebar-collapsed a {
+  padding: 0.6rem;
+  justify-content: center;
+}
+
+.sidebar a:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.sidebar a.active {
+  background: rgba(17, 195, 219, 0.1);
+  color: var(--brand-green);
+  font-weight: 600;
+  border-left: 3px solid var(--brand-green);
+}
+
+.sidebar-collapsed a.active {
+  border-left: none;
+  border-bottom: 2px solid var(--brand-green);
+}
+
+.sidebar .nav-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Nav group styles */
+.nav-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 150ms, color 150ms;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.nav-group-header:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.nav-group-active {
+  color: var(--brand-green);
+}
+
+.nav-group-caret {
+  font-size: 0.45rem;
+  opacity: 0.6;
+}
+
+.nav-group-children {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-group-children a {
+  padding-left: 1.25rem !important;
+  font-size: 0.825rem !important;
+}
+
+.sidebar-toggle {
+  margin-top: 0.5rem;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  padding: 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  transition: color 150ms, background 150ms;
+}
+
+.sidebar-toggle:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.content {
+  flex: 1;
+  padding: 2rem;
+  background: var(--bg-content);
+  overflow-y: auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* Sidebar user info */
+.sidebar-user {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 0.5rem;
+}
+
+.sidebar-user-email {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 0.35rem;
+}
+
+.sidebar-signout {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  cursor: pointer;
+  width: 100%;
+  transition: color 150ms, background 150ms;
+  font-family: inherit;
+}
+
+.sidebar-signout:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.sidebar-signout-icon {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  padding: 0.3rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 150ms, background 150ms;
+  margin-bottom: 0.25rem;
+}
+
+.sidebar-signout-icon:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+/* Login page */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-content);
+}
+
+.login-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2.5rem;
+  width: 380px;
+  max-width: 90vw;
+  text-align: center;
+}
+
+.login-logo {
+  height: 48px;
+  width: auto;
+  max-width: 280px;
+  object-fit: contain;
+  margin-bottom: 1rem;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.login-title {
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: var(--brand-green);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  margin: 0 0 0.25rem 0;
+}
+
+.login-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0 0 2rem 0;
+}
+
+.login-input {
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  margin-bottom: 0.6rem;
+  box-sizing: border-box;
+  transition: border-color 150ms;
+}
+
+.login-input::placeholder {
+  color: var(--text-muted);
+}
+
+.login-input:focus {
+  outline: none;
+  border-color: var(--brand-green);
+}
+
+.login-button {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  margin-top: 0.6rem;
+  background: var(--brand-green-dark);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 150ms;
+  font-family: inherit;
+}
+
+.login-button:hover {
+  opacity: 0.9;
+}
+
+.login-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-error {
+  color: #ef4444;
+  font-size: 0.8rem;
+  margin-top: 1rem;
+}
+
+.login-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--brand-green);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

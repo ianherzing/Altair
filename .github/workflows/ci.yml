@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Type check
+        run: npx tsc -b
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint
+        run: npm run lint
+
+  test:
+    name: Test + Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests with coverage
+        run: npx vitest run --coverage --passWithNoTests
+
+      - name: Extract coverage percentage
+        id: coverage
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            COVERAGE_PCT=$(node -e "const c = require('./coverage/coverage-summary.json'); console.log(c.total.statements.pct)")
+            echo "percentage=$COVERAGE_PCT" >> $GITHUB_OUTPUT
+            echo "Coverage: $COVERAGE_PCT%"
+          else
+            echo "percentage=0" >> $GITHUB_OUTPUT
+            echo "No coverage data found"
+          fi
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
+
+      - name: Post or update coverage comment on PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          COVERAGE_PCT: ${{ steps.coverage.outputs.percentage }}
+        run: |
+          BODY="## Test Coverage Report
+
+          **Overall Coverage: ${COVERAGE_PCT}%**
+
+          [Download Full Coverage Report](https://github.com/${REPO}/actions/runs/${RUN_ID})"
+
+          # Find existing comment from github-actions[bot] that contains the marker
+          COMMENT_ID=$(gh api "/repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Test Coverage Report")))][0].id // empty')
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api "/repos/${REPO}/issues/comments/${COMMENT_ID}" \
+              --method PATCH -f body="$BODY" > /dev/null
+            echo "Updated existing comment $COMMENT_ID"
+          else
+            gh api "/repos/${REPO}/issues/${PR_NUMBER}/comments" \
+              --method POST -f body="$BODY" > /dev/null
+            echo "Created new comment"
+          fi
+
+  build:
+    name: Build
+    needs: [typecheck, lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npx vite build

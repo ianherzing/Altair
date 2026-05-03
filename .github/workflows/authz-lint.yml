@@ -1,0 +1,66 @@
+name: Authorization Lint
+
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+jobs:
+  authz-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4
+
+      - name: API handlers must use withAuth
+        run: |
+          EXIT=0
+
+          # Check all API RPC handlers use withAuth.
+          # Handlers live in api/_rpc/ (the underscore prefix excludes them
+          # from Vercel function bundling — they're dispatched by api/rpc/[name].ts).
+          for f in api/_rpc/*.ts; do
+            if ! grep -q "withAuth" "$f"; then
+              echo "::error file=$f::Missing withAuth() — all API handlers must use withAuth"
+              EXIT=1
+            fi
+          done
+
+          # Check named API handlers (not lib/, not catch-all)
+          for f in api/batch.ts; do
+            if [ -f "$f" ] && ! grep -q "withAuth" "$f"; then
+              echo "::error file=$f::Missing withAuth() — all API handlers must use withAuth"
+              EXIT=1
+            fi
+          done
+
+          exit $EXIT
+
+      - name: Pages must not call supabase.from() or supabase.rpc()
+        run: |
+          EXIT=0
+
+          for f in src/pages/*.tsx; do
+            # Detect direct data access — catches both single-line and multiline patterns:
+            #   supabase.from(...)     (single-line)
+            #   supabase\n  .from(...) (multiline, common in prettier-formatted code)
+            #
+            # Strategy: if file has .from(' or .rpc(' AND imports supabase client, flag it.
+            # Realtime .channel() and auth calls are fine — only .from() and .rpc() are banned.
+            if grep -q "\.from(" "$f" && grep -q "import.*supabase.*from.*lib/supabase" "$f"; then
+              # Exclude files that ONLY use supabase for realtime (.channel) — no .from() on data tables
+              # Count .from(' occurrences that look like data access (quoted table name argument)
+              DATA_CALLS=$(grep -c "\.from('[a-z_]*')" "$f" || true)
+              if [ "$DATA_CALLS" -gt 0 ]; then
+                echo "::error file=$f::Direct supabase.from() call found ($DATA_CALLS occurrence(s)) — use src/lib/api.ts instead"
+                EXIT=1
+              fi
+            fi
+
+            # Also catch .rpc() calls
+            if grep -q "\.rpc(" "$f" && grep -q "import.*supabase.*from.*lib/supabase" "$f"; then
+              echo "::error file=$f::Direct supabase.rpc() call found — use src/lib/api.ts instead"
+              EXIT=1
+            fi
+          done
+
+          exit $EXIT

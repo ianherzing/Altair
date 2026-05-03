@@ -1,0 +1,79 @@
+{
+  "id": "time-and-materials-project",
+  "name": "Time & Materials Project",
+  "description": "Flexible T&M engagement with rolling weekly checkpoints and monthly invoicing. No hard end-date phases.",
+  "phases": ["Setup", "Delivery", "Closeout"],
+  "items": [
+    {
+      "title": "Countersign T&M agreement and confirm rates",
+      "phase": "Setup",
+      "due_offset_days": -7,
+      "tags": ["legal", "billing"]
+    },
+    {
+      "title": "Provision client access and project workspace",
+      "phase": "Setup",
+      "due_offset_days": -3,
+      "tags": ["logistics"]
+    },
+    {
+      "title": "Agree on reporting cadence with client",
+      "phase": "Setup",
+      "due_offset_days": -3,
+      "tags": ["client-facing"]
+    },
+    {
+      "title": "Initial scoping / backlog review call",
+      "phase": "Setup",
+      "due_offset_days": 0,
+      "tags": ["meeting"]
+    },
+    {
+      "title": "Weekly status + hours burndown report",
+      "description": "Recurring — duplicate weekly if your TaskSink doesn't support recurrence natively.",
+      "phase": "Delivery",
+      "due_offset_days": 7,
+      "tags": ["recurring", "client-facing"]
+    },
+    {
+      "title": "Monthly invoice with hours log",
+      "phase": "Delivery",
+      "due_offset_days": 30,
+      "tags": ["recurring", "billing"]
+    },
+    {
+      "title": "Review hours vs. committed bucket (scope / budget check)",
+      "phase": "Delivery",
+      "due_offset_days": 14,
+      "tags": ["recurring"]
+    },
+    {
+      "title": "Wind-down notice to client (30 days before end)",
+      "phase": "Closeout",
+      "due_offset_days": -30
+    },
+    {
+      "title": "Handover documentation to client",
+      "phase": "Closeout",
+      "due_offset_days": -3,
+      "tags": ["deliverable"]
+    },
+    {
+      "title": "Final invoice reconciliation",
+      "phase": "Closeout",
+      "due_offset_days": 7,
+      "tags": ["billing"]
+    },
+    {
+      "title": "Collect NPS / feedback from client",
+      "phase": "Closeout",
+      "due_offset_days": 7
+    },
+    {
+      "title": "Internal retrospective and archive project",
+      "phase": "Closeout",
+      "due_offset_days": 14,
+      "tags": ["retro"]
+    }
+  ]
+}

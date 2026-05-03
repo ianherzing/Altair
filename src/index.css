@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /*
+   * Theme — deep-forest base with kelly-green accents, sand borders, and
+   * warm off-white text. Override these variables in your own stylesheet
+   * (or create src/theme.css and import it after this file) to rebrand
+   * Altair for your organization. Every UI color references a variable
+   * below.
+   */
+
+  /* Brand accent (used for primary actions, focus rings, nav highlights) */
+  --brand-green: #D6B25E;
+  --brand-green-dark: #006C35;
+
+  /* Backgrounds */
+  --bg-body: #08130F;
+  --bg-sidebar: #06100C;
+  --bg-content: #0A1712;
+  --bg-card: #0D1F17;
+  --bg-card-alt: #132A20;
+  --bg-input: #0D1F17;
+  --bg-tertiary: #132A20;
+
+  /* Borders (sand at low opacity) */
+  --border: rgba(232, 219, 192, 0.18);
+  --border-subtle: rgba(232, 219, 192, 0.08);
+
+  /* Text */
+  --text-primary: #F7FFF8;
+  --text-secondary: #B9CDBF;
+  --text-muted: #789284;
+
+  /* Operational / severity palette (used by badges, status pills) */
+  --color-critical: #B65540;
+  --color-high: #C8A24F;
+  --color-medium: #D6B25E;
+  --color-low: #789284;
+  --color-info: #2FD27A;
+
+  --fill-critical: #2D1813;
+  --fill-high: #2A2010;
+  --fill-medium: #2A2010;
+  --fill-low: #16201B;
+  --fill-info: #0A4A26;
+
+  /* Aliases for resourcing capacity bars (over-capacity = rust, not a bright red) */
+  --brand-red: #B65540;
+  --brand-red-dark: #4D1F12;
+
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-secondary);
+  background-color: var(--bg-body);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1, h2, h3 {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+}
+
+td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.875rem;
+}
+
+tr:hover {
+  background: var(--bg-card-alt);
+}
+
+button {
+  border-radius: 6px;
+  border: 1px solid var(--brand-green-dark);
+  padding: 0.5em 1.2em;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  background: var(--brand-green-dark);
+  color: #fff;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms;
+}
+
+button:hover {
+  background: var(--brand-green);
+  border-color: var(--brand-green);
+}

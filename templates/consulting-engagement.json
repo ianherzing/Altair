@@ -1,0 +1,93 @@
+{
+  "id": "consulting-engagement",
+  "name": "Consulting Engagement",
+  "description": "Fixed-scope, SOW-driven consulting engagement. Kickoff through readout and closeout.",
+  "phases": ["Setup", "Active", "Readout", "Closeout"],
+  "items": [
+    {
+      "title": "Countersign SOW and save to records",
+      "phase": "Setup",
+      "due_offset_days": -14,
+      "tags": ["legal", "billing"]
+    },
+    {
+      "title": "Confirm client contacts and primary stakeholder",
+      "phase": "Setup",
+      "due_offset_days": -14
+    },
+    {
+      "title": "Provision client access and shared workspaces",
+      "phase": "Setup",
+      "due_offset_days": -7,
+      "tags": ["logistics"]
+    },
+    {
+      "title": "Send kickoff logistics email",
+      "description": "Pre-flight checklist, expected artifacts from client, schedule confirmation.",
+      "phase": "Setup",
+      "due_offset_days": -7
+    },
+    {
+      "title": "Internal project walkthrough with the assigned team",
+      "phase": "Setup",
+      "due_offset_days": -3
+    },
+    {
+      "title": "Client kickoff call",
+      "phase": "Setup",
+      "due_offset_days": 0,
+      "tags": ["meeting"]
+    },
+    {
+      "title": "Weekly status update to client",
+      "description": "Recurring until engagement close. Duplicate this task per week if your TaskSink doesn't do recurrence.",
+      "phase": "Active",
+      "due_offset_days": 7,
+      "tags": ["recurring", "client-facing"]
+    },
+    {
+      "title": "Mid-engagement check-in with client",
+      "phase": "Active",
+      "due_offset_days": 14
+    },
+    {
+      "title": "Draft final deliverable",
+      "phase": "Readout",
+      "due_offset_days": -3,
+      "tags": ["deliverable"]
+    },
+    {
+      "title": "Internal peer review of deliverable",
+      "phase": "Readout",
+      "due_offset_days": -2
+    },
+    {
+      "title": "Client readout presentation",
+      "phase": "Readout",
+      "due_offset_days": 0,
+      "tags": ["meeting", "client-facing"]
+    },
+    {
+      "title": "Send final invoice",
+      "phase": "Closeout",
+      "due_offset_days": 3,
+      "tags": ["billing"]
+    },
+    {
+      "title": "Collect NPS / feedback from client",
+      "phase": "Closeout",
+      "due_offset_days": 7
+    },
+    {
+      "title": "Internal retrospective",
+      "phase": "Closeout",
+      "due_offset_days": 7,
+      "tags": ["retro"]
+    },
+    {
+      "title": "Archive project and mark engagement done",
+      "phase": "Closeout",
+      "due_offset_days": 14
+    }
+  ]
+}
