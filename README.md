@@ -1,5 +1,9 @@
 # Altair
 
+<video src="https://github.com/dr-h-cyber/Altair/releases/download/v0.1.0/altair-overview.mp4" controls width="100%"></video>
+
+> 🎥 [**Watch the overview**](https://github.com/dr-h-cyber/Altair/releases/download/v0.1.0/altair-overview.mp4) — what's in the box and how to make it yours. (If the player above doesn't load in your client, the link works as a download.)
+
 A Professional Services Automation (PSA) **exoskeleton** — the data model,
 dashboards, auth, and RLS are built in; integrations with your CRM, task
 manager, HR system, and chat tool are not. You bring your own, wired through
