@@ -137,11 +137,15 @@ dashboards travel — only the auth/business-logic layer is Supabase-shaped.
 
 ### Maintenance philosophy
 
-This repo is the foundation we use ourselves. There is **no upstream sync**
-guarantee — once you fork, your tree is yours. We accept PRs that fit the
-adapter pattern (e.g. a `LinearTaskSink` reference impl), but we won't break
-your fork to land features specific to our workflow. If a direction we take
-stops making sense for you, ignore the merge and keep going.
+**Altair is published as a reference, not an actively maintained product.**
+We don't triage issues, won't promise reviews, and won't ship roadmap items.
+There is no upstream sync — once you fork, your tree is yours.
+
+What we *do* welcome: PRs that fix something demonstrably wrong, security
+reports via GitHub Security Advisories, and adapter reference implementations
+that fit the existing pattern. Anything else, expect silence — and fork
+instead. If a direction we take stops making sense for you, ignore the
+merge and keep going.
 
 ## Stack
 
@@ -252,7 +256,9 @@ vercel.json        Routing, CSP, headers
 Early OSS release. The DB shape lives in a single `supabase/schema.sql` —
 you can `psql -f supabase/schema.sql` against an empty Postgres and the app
 works. The revenue engine and seed data are separate files applied after.
-Forks and issues welcome.
+
+**Forks encouraged. Issues will likely sit unread.** See "Maintenance
+philosophy" above.
 
 ## License
 

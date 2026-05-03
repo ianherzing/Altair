@@ -117,7 +117,7 @@ export function Permissions() {
             </button>
           </div>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-            Manage user roles and access levels. Users must be added here to access Altair via SSO.
+            Manage user roles and access levels. Users must be added here to access Altair.
           </p>
         </div>
         <button onClick={() => { setForm(EMPTY_FORM); setShowForm(!showForm) }}>
@@ -287,9 +287,11 @@ export function Permissions() {
                   How Access Works
                 </div>
                 <div>
-                  Users must be added to this permissions table to access Altair. When a user signs in via Okta SSO,
+                  Users must be added to this permissions table to access Altair. When a user signs in,
                   their email is matched against this list. If no match is found, they see an &quot;Access Denied&quot; page.
                   The assigned role determines which pages they can see and whether they can modify data.
+                  Auth defaults to Supabase email+password; swap for Okta / Google / SAML in the Supabase
+                  dashboard without changing this table.
                 </div>
               </div>
 

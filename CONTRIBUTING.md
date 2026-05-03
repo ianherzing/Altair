@@ -1,8 +1,11 @@
 # Contributing
 
-Contributions welcome. This is a small project and should stay small — the
-goal is a clean, readable exoskeleton that forks well, not a feature-rich
-platform.
+> **This repo is not actively maintained.** Issues and discussion threads
+> may go unread. PRs that match the patterns below have a real chance of
+> landing; everything else is better as a fork.
+
+This is a small project and should stay small — the goal is a clean,
+readable exoskeleton that forks well, not a feature-rich platform.
 
 ## What fits
 

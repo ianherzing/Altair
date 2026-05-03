@@ -549,7 +549,7 @@ export function ConsultantDetail() {
                 {utilization.ytdPct}%
               </span>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400, marginLeft: '0.5rem' }}>
-                ({utilization.ytdBillable}h / {utilization.ytdAvailable}h)
+                ({Number(utilization.ytdBillable.toFixed(1))}h / {Number(utilization.ytdAvailable.toFixed(1))}h)
               </span>
               {utilization.target > 0 && (
                 <span style={{
