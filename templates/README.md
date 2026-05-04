@@ -43,7 +43,7 @@ const template = JSON.parse(await fs.readFile('templates/consulting-engagement.j
 const sink = new InternalTasksSink()
 await sink.createProjectTasks({
   projectId: '...',
-  projectName: 'Acme Pentest',
+  projectName: 'Acme Cloud Migration',
   engagementStart: new Date('2026-05-01'),
   template,
 })
