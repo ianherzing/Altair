@@ -142,4 +142,19 @@ describe('downloadCsv', () => {
     // 'plain text' has a space but no comma/newline/quote — no quoting needed
     expect(lines[1]).toBe('123,plain text')
   })
+
+  it('neutralizes formula-leading characters to prevent CSV injection', () => {
+    downloadCsv([
+      { a: '=cmd|/c calc', b: '+1+2', c: '-2+3', d: '@SUM(1)', e: '\tTAB', f: 'safe' },
+    ], 'inject.csv')
+    const lines = capturedBlobContent.split('\n')
+    expect(lines[1]).toBe(`'=cmd|/c calc,'+1+2,'-2+3,'@SUM(1),'\tTAB,safe`)
+  })
+
+  it('neutralizes formula leaders even when value also needs quoting', () => {
+    downloadCsv([{ x: '=A1,bad' }], 'inject.csv')
+    const lines = capturedBlobContent.split('\n')
+    // Single quote prefix added first, then full value quoted because of the comma.
+    expect(lines[1]).toBe(`"'=A1,bad"`)
+  })
 })

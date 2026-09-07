@@ -1,6 +1,6 @@
 # Altair REST API
 
-Altair exposes a read-only REST API via Supabase PostgREST for querying engineer, project, assignment, revenue, and capacity data.
+Altair exposes a read-only REST API via Supabase PostgREST for querying consultant, project, assignment, revenue, and capacity data.
 
 ## Getting Access
 
@@ -33,7 +33,7 @@ People. Includes active and recently offboarded.
 | `id` | uuid | Primary key |
 | `full_name` | text | |
 | `email` | text | Unique |
-| `title` | text | e.g. "Senior Security Engineer" |
+| `title` | text | e.g. "Senior Consultant" |
 | `manager` | text | Manager's name |
 | `country` | text | ISO country code ("US", "BR", etc.) |
 | `is_active` | boolean | |
@@ -146,10 +146,10 @@ Full reference: https://postgrest.org/en/stable/references/api/tables_views.html
 /projects?client_name=ilike.*acme*&select=client_name,project_name,status,sow_amount
 ```
 
-### Assignments with project + engineer details
+### Assignments with project + consultant details
 
 ```
-/assignments?select=start_date,end_date,total_hours,projects(client_name,project_name,status),engineers(full_name)&order=start_date
+/assignments?select=start_date,end_date,total_hours,projects(client_name,project_name,status),consultants(full_name)&order=start_date
 ```
 
 ### Billable assignments in a date range

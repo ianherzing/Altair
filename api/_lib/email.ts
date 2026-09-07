@@ -82,6 +82,22 @@ export async function sendMentionNotification(params: {
 }
 
 /**
+ * Strip a leading `${sow} - ` or `${sow} — ` (em/en dash) from project_name,
+ * and produce an ASCII-only variant for the Subject header. Subject lines
+ * mojibake on reply through some mail clients when they contain UTF-8 dashes.
+ */
+export function normalizeProjectForEmail(sowNumber: string, projectName: string): {
+  cleanProject: string
+  subjectProject: string
+} {
+  const sowEsc = sowNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const sowPrefixRe = sowNumber ? new RegExp(`^${sowEsc}\\s*[-\\u2013\\u2014]\\s*`) : null
+  const cleanProject = sowPrefixRe ? projectName.replace(sowPrefixRe, '') : projectName
+  const subjectProject = cleanProject.replace(/[–—]/g, '-')
+  return { cleanProject, subjectProject }
+}
+
+/**
  * Generic scheduling confirmation email — customize copy for your org by
  * overriding the NOTIFICATION_FROM_NAME / NOTIFICATION_FROM_EMAIL env vars
  * or by replacing the HTML template below.
@@ -101,19 +117,21 @@ export async function sendSchedulingEmail(params: {
   const transport = getTransport()
   if (!transport) throw new Error('Email not configured (GMAIL_USER/GMAIL_APP_PASSWORD missing)')
 
-  const sowPrefix = params.sowNumber ? `${params.sowNumber} - ` : ''
-  const cleanProject = sowPrefix && params.projectName.startsWith(sowPrefix)
-    ? params.projectName.slice(sowPrefix.length)
-    : params.projectName
+  const { cleanProject, subjectProject } = normalizeProjectForEmail(
+    params.sowNumber,
+    params.projectName,
+  )
 
   const safeClient = escapeHtml(params.clientName)
   const safeSow = escapeHtml(params.sowNumber)
   const safeProject = escapeHtml(cleanProject)
+  const safeSubjectProject = escapeHtml(subjectProject)
   const safeStart = escapeHtml(params.startDate)
   const safeEnd = escapeHtml(params.endDate)
   const safePM = escapeHtml(params.projectManagerName)
 
-  const subject = `${safeClient} – ${safeSow} – ${safeProject}`
+  // ASCII-only subject: UTF-8 dashes mojibake in some mail clients on reply.
+  const subject = [safeClient, safeSow, safeSubjectProject].filter(Boolean).join(' - ')
 
   await transport.sendMail({
     from: fromAddress(),

@@ -376,7 +376,7 @@ export function Resourcing() {
       {/* Filter bar */}
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', flexShrink: 0 }}>
         <input
-          type="text" placeholder="Search name, skill, passion area..."
+          type="text" placeholder="Search name, skill, passion area, ALT-ID..."
           value={searchText} onChange={e => setSearchText(e.target.value)}
           style={{ ...filterInputStyle, width: 220 }}
         />
@@ -711,7 +711,7 @@ export function Resourcing() {
             Clear Filters
           </button>
         )}
-        <SavedViewBar page="resourcing" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} />
+        <SavedViewBar page="resourcing" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} onClear={clearAllFilters} />
         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
           {viewMode === 'consultant'
             ? `${filteredConsultants.length} of ${consultants.length} consultants`
@@ -792,7 +792,7 @@ export function Resourcing() {
             {/* Week headers */}
             <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
               <div style={{ width: NAME_COL, minWidth: NAME_COL, flexShrink: 0, background: 'var(--bg-card)', padding: '0.4rem 1rem', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, position: 'sticky', left: 0, zIndex: 5, display: 'flex', alignItems: 'center' }}>
-                {viewMode === 'consultant' ? 'ENGINEER' : 'PROJECT'}
+                {viewMode === 'consultant' ? 'CONSULTANT' : 'PROJECT'}
                 <button
                   onClick={() => {
                     if (viewMode === 'consultant') {

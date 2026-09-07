@@ -14,9 +14,11 @@ interface Props {
   getFilters: () => Record<string, unknown>
   applyFilters: (filters: Record<string, unknown>) => void
   hasActiveFilters?: boolean
+  /** Page-specific reset applied when the active view is cleared. Falls back to the generic filter reset. */
+  onClear?: () => void
 }
 
-function SavedViewBarInner({ page, getFilters, applyFilters, hasActiveFilters }: Props) {
+function SavedViewBarInner({ page, getFilters, applyFilters, onClear }: Props) {
   const { user } = useAuth()
   const storageKey = `altair-saved-view-${page}`
   const [views, setViews] = useState<SavedView[]>([])
@@ -151,7 +153,11 @@ function SavedViewBarInner({ page, getFilters, applyFilters, hasActiveFilters }:
 
   function handleClear() {
     setActiveViewId(null)
-    applyFilters({ filterPMs: [], filterClients: [], filterDateStart: '', filterDateEnd: '', searchText: '' })
+    if (onClear) {
+      onClear()
+    } else {
+      applyFilters({ filterPMs: [], filterClients: [], filterDateStart: '', filterDateEnd: '', searchText: '' })
+    }
     setDropdownOpen(false)
   }
 
@@ -164,7 +170,7 @@ function SavedViewBarInner({ page, getFilters, applyFilters, hasActiveFilters }:
         </button>
         {dropdownOpen && (
           <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 3, zIndex: 200, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6, minWidth: 220, maxHeight: 320, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
-            {views.length === 0 && (<div style={{ padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.7rem' }}>No saved views — set filters then click + Save</div>)}
+            {views.length === 0 && (<div style={{ padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.7rem' }}>No saved views — click + Save to save the current view</div>)}
             {views.map(v => (
               <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.5rem', cursor: 'pointer', background: v.id === activeViewId ? 'rgba(17,195,219,0.1)' : 'transparent', borderBottom: '1px solid var(--border-subtle)' }}
                 onMouseEnter={e => { if (v.id !== activeViewId) e.currentTarget.style.background = 'var(--bg-input)' }}
@@ -191,7 +197,7 @@ function SavedViewBarInner({ page, getFilters, applyFilters, hasActiveFilters }:
         )}
       </div>
 
-      {hasActiveFilters && !showSaveInput && (
+      {!showSaveInput && (
         <button type="button" onClick={() => setShowSaveInput(true)} style={barBtnStyle} title="Save current filters as a view">+ Save</button>
       )}
       {showSaveInput && (
@@ -204,7 +210,7 @@ function SavedViewBarInner({ page, getFilters, applyFilters, hasActiveFilters }:
         </div>
       )}
 
-      {activeView && hasActiveFilters && (
+      {activeView && (
         <button type="button" onClick={handleUpdate} disabled={saving} style={{ ...barBtnStyle, opacity: saving ? 0.5 : 1 }} title={`Update "${activeView.name}" with current filters`}>Update</button>
       )}
     </div>

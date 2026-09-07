@@ -34,6 +34,10 @@ export interface RevenueProjectContribution {
   practice_manager: string | null
   status: RevenueStatus
   amount: number
+  // Optional: populated for legacy historical_revenue rows so the per-project
+  // export can still emit a SOW # when the project pre-dates Altair and isn't
+  // present in the projects table.
+  sow_number?: string
 }
 
 export interface RevenueDrilldown {

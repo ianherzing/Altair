@@ -12,7 +12,7 @@
 #   3. Applies supabase/revenue_engine.sql
 #   4. Seeds the rich demo dataset (supabase/seed.sql)
 #   5. Creates a demo admin user (demo@example.com / demo-password-1234)
-#   6. Writes .env.local with the local Supabase anon key + URL
+#   6. Writes .env.local with the local Supabase keys + URL
 #
 # Usage:
 #   ./scripts/bootstrap-local.sh            # bootstrap from scratch
@@ -107,6 +107,7 @@ if [ ! -f "$ENV_FILE" ] || $RESET; then
 VITE_SUPABASE_URL=$API_URL
 VITE_SUPABASE_ANON_KEY=$ANON_KEY
 SUPABASE_URL=$API_URL
+SUPABASE_ANON_KEY=$ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY
 ALLOWED_ORIGINS=http://localhost:5173
 ALTAIR_BASE_URL=http://localhost:5173
@@ -130,7 +131,8 @@ cat <<EOF
 
    Next steps:
      npm install
-     npm run dev        →  open http://localhost:5173
+     npm run dev:api    →  local API server (terminal 1)
+     npm run dev        →  open http://localhost:5173 (terminal 2)
 
    Tear down when done:
      supabase stop

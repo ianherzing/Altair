@@ -5,7 +5,8 @@ import { useLoadData } from '../lib/useLoadData'
 import { distributeHoursToMonth } from '../lib/dateUtils'
 import { monthsBetween, formatMonth, quarterKey } from '../lib/financeUtils'
 import { statusCategory, contribKey } from '../lib/revenueUtils'
-import type { Project, Assignment, HistoricalRevenue } from '../types/database'
+import { LEGACY_MONTHS, HIST_MONTH_NAME_BY_KEY } from '../lib/legacyMonths'
+import type { Project, Assignment, HistoricalRevenue, MonthlySnapshot } from '../types/database'
 import type {
   CatKey,
   RevenueViewMode,
@@ -15,21 +16,27 @@ import type {
 } from '../types/revenue'
 import { CAT_LABELS } from '../types/revenue'
 
-// Legacy months sourced from external historical data (pre-Altair
-// cutover). For these months we replace the projects+assignments computation
-// with the fixed numbers stored in historical_revenue (migration v71), so the
-// Revenue page matches the legacy system of record.
-const LEGACY_MONTHS = new Set(['2026-01', '2026-02', '2026-03'])
-const HIST_MONTH_TO_KEY: Record<string, string> = {
-  January: '2026-01',
-  February: '2026-02',
-  March: '2026-03',
-}
+export type RevenueExportRow = Record<string, string | number>
+export const REVENUE_EXPORT_COLUMNS = [
+  'Month', 'Client', 'Project', 'SOW #', 'Status', 'Practice Manager',
+  'Total Hours', 'Bill Rate', 'Bill Rate Locked', 'Revenue',
+  'Engagement Start', 'Engagement End',
+] as const
+
+// LEGACY_MONTHS and the month-name <-> key maps live in src/lib/legacyMonths.ts
+// so the weekly finance script can import the same set. When a new month is
+// added there, both surfaces pick it up automatically.
+// HIST_MONTH_TO_KEY is the reverse direction (long English month name -> key);
+// derive it from HIST_MONTH_NAME_BY_KEY so the file stays a single source of truth.
+const HIST_MONTH_TO_KEY: Record<string, string> = Object.fromEntries(
+  Object.entries(HIST_MONTH_NAME_BY_KEY).map(([key, name]) => [name, key])
+)
 
 export function useRevenueData() {
   const [projects, setProjects] = useState<Project[]>([])
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [legacyRevenue, setLegacyRevenue] = useState<HistoricalRevenue[]>([])
+  const [snapshots, setSnapshots] = useState<MonthlySnapshot[]>([])
   const [viewMode, setViewMode] = useState<RevenueViewMode>('monthly')
   const [selectedMonths, setSelectedMonths] = useState<string[]>([])
   const [monthPickerOpen, setMonthPickerOpen] = useState(false)
@@ -47,14 +54,31 @@ export function useRevenueData() {
   const [drilldown, setDrilldown] = useState<RevenueDrilldown | null>(null)
 
   const { loading, error, retry } = useLoadData(async () => {
-    const [projectData, assignmentData, legacyData] = await Promise.all([
+    // Rolling 24-month snapshot window — covers backward reporting (e.g., AR
+    // tracking prior-year actuals) without pulling everything.
+    const snapCutoff = new Date()
+    snapCutoff.setMonth(snapCutoff.getMonth() - 24)
+    const snapCutoffStr = `${snapCutoff.getFullYear()}-${String(snapCutoff.getMonth() + 1).padStart(2, '0')}-01`
+    // Build legacy filter from the shared LEGACY_MONTHS set. Group keys by year
+    // so we can pull all configured legacy months in a single request, no matter
+    // how many years they span.
+    const legacyYears = [...new Set([...LEGACY_MONTHS].map(k => k.split('-')[0]))]
+    const legacyMonthNames = [...LEGACY_MONTHS]
+      .map(k => HIST_MONTH_NAME_BY_KEY[k])
+      .filter((n): n is string => !!n)
+    const legacyFilter = legacyYears.length === 1
+      ? { year: `eq.${legacyYears[0]}`, month: `in.(${legacyMonthNames.join(',')})` }
+      : { year: `in.(${legacyYears.join(',')})`, month: `in.(${legacyMonthNames.join(',')})` }
+    const [projectData, assignmentData, legacyData, snapshotData] = await Promise.all([
       api.getProjects({ project_type: 'eq.billable' }),
       api.getAssignments(),
-      api.getHistoricalRevenue({ year: 'eq.2026', month: 'in.(January,February,March)' }, undefined, 1000),
+      api.getHistoricalRevenue(legacyFilter, undefined, 1000),
+      api.getMonthlySnapshots({ month: `gte.${snapCutoffStr}` }),
     ])
     setProjects(projectData)
     setAssignments(assignmentData)
     setLegacyRevenue(legacyData)
+    setSnapshots(snapshotData)
   }, [], 8000)
 
   useEffect(() => {
@@ -177,9 +201,12 @@ export function useRevenueData() {
   }, [filteredMonthKeys, selectedMonths])
 
   // Build monthBuckets AND per-project contribution map together
-  const { monthBuckets, contributionMap } = useMemo(() => {
+  const { monthBuckets, contributionMap, projectMonthDetailMap } = useMemo(() => {
     const bucketMap = new Map<string, RevenueMonthBucket>()
     const cMap = new Map<string, RevenueProjectContribution[]>()
+    // Per (project_id|YYYY-MM) details for the CSV export. Hours and bill rate
+    // are forecast-derived; the snapshot table overrides these when present.
+    const detailMap = new Map<string, { hours: number; billRate: number }>()
 
     // Quick-lookup map: project_id -> project
     const projectMap = new Map<string, Project>()
@@ -256,7 +283,11 @@ export function useRevenueData() {
           const hours = distributeHoursToMonth(a, y, mo - 1) // month is 0-indexed
           if (hours <= 0) continue
           hasAnyHours = true
+          if (LEGACY_MONTHS.has(m)) continue // legacy months are overlaid from historical_revenue
           addRevenue(m, cat, hours * billRate, contrib)
+          const dk = `${project.id}|${m}`
+          const prev = detailMap.get(dk)
+          detailMap.set(dk, { hours: (prev?.hours ?? 0) + hours, billRate })
         }
       }
 
@@ -291,6 +322,7 @@ export function useRevenueData() {
         practice_manager: proj?.project_manager ?? null,
         status: 'done',
         amount,
+        sow_number: r.sow_number,
       }
       const hardCK = contribKey(monthKey, 'hard')
       if (!cMap.has(hardCK)) cMap.set(hardCK, [])
@@ -303,6 +335,7 @@ export function useRevenueData() {
     return {
       monthBuckets: Array.from(bucketMap.values()).sort((a, b) => a.key.localeCompare(b.key)),
       contributionMap: cMap,
+      projectMonthDetailMap: detailMap,
     }
   }, [pmFilteredProjects, assignments, pmFilteredProjectIds, filteredLegacyRevenue, projectsBySow])
 
@@ -354,6 +387,107 @@ export function useRevenueData() {
     }
     return qMap
   }, [contributionMap, filteredBuckets, viewMode])
+
+  // Snapshot lookup: `${project_id}|YYYY-MM` -> MonthlySnapshot
+  // Locked snapshots are the system of record for hours / bill rate / revenue.
+  const snapshotByKey = useMemo(() => {
+    const m = new Map<string, MonthlySnapshot>()
+    for (const s of snapshots) {
+      const monthKey = s.month.slice(0, 7) // 'YYYY-MM-DD' -> 'YYYY-MM'
+      m.set(`${s.project_id}|${monthKey}`, s)
+    }
+    return m
+  }, [snapshots])
+
+  /**
+   * Build per-project CSV rows for the currently displayed window.
+   * One row per (project, month) at month grain regardless of viewMode (per-project
+   * quarter rollups don't add value; finance pivots in Excel if needed).
+   * Sources, in order: monthly_snapshots (locked actuals), assignment-derived
+   * forecast hours x bill rate, historical_revenue (legacy-month overlay).
+   */
+  const buildExportRows = useCallback((): RevenueExportRow[] => {
+    const rows: RevenueExportRow[] = []
+    const projectById = new Map<string, Project>()
+    for (const p of projects) projectById.set(p.id, p)
+
+    // Index snapshots by month for O(1) orphan lookup below.
+    const snapshotsByMonth = new Map<string, MonthlySnapshot[]>()
+    for (const s of snapshots) {
+      const mk = s.month.slice(0, 7)
+      if (!snapshotsByMonth.has(mk)) snapshotsByMonth.set(mk, [])
+      snapshotsByMonth.get(mk)!.push(s)
+    }
+
+    for (const b of filteredBuckets) {
+      const contributions = contributionMap.get(contribKey(b.key, 'total')) ?? []
+      // Aggregate revenue per project for this month (multiple assignment slices
+      // produce multiple contribution entries for the same project).
+      const perProject = new Map<string, { revenue: number; sample: RevenueProjectContribution }>()
+      for (const c of contributions) {
+        const cur = perProject.get(c.project_id)
+        if (cur) cur.revenue += c.amount
+        else perProject.set(c.project_id, { revenue: c.amount, sample: c })
+      }
+
+      for (const [projectId, agg] of perProject) {
+        const project = projectById.get(projectId)
+        const snap = snapshotByKey.get(`${projectId}|${b.key}`)
+        const detail = projectMonthDetailMap.get(`${projectId}|${b.key}`)
+        const isLegacy = projectId.startsWith('legacy:')
+
+        const hours = snap?.total_hours ?? detail?.hours
+        const billRate = snap?.bill_rate ?? detail?.billRate
+        const revenue = snap ? Number(snap.revenue) : agg.revenue
+        const locked = isLegacy ? 'Yes' : snap?.is_locked ? 'Yes' : 'No'
+
+        rows.push({
+          Month: b.key,
+          Client: agg.sample.client_name,
+          Project: agg.sample.project_name,
+          'SOW #': project?.sow_number ?? agg.sample.sow_number ?? '',
+          Status: agg.sample.status,
+          'Practice Manager': agg.sample.practice_manager ?? '',
+          'Total Hours': hours !== undefined ? hours.toFixed(2) : '',
+          'Bill Rate': billRate !== undefined && billRate > 0 ? billRate.toFixed(2) : '',
+          'Bill Rate Locked': locked,
+          Revenue: Math.round(revenue * 100) / 100,
+          'Engagement Start': project?.engagement_start ?? '',
+          'Engagement End': project?.engagement_end ?? '',
+        })
+      }
+
+      // Orphaned-snapshot rows: a locked monthly_snapshot whose assignment was
+      // edited or deleted post-lock has no contribution but still represents
+      // recognized revenue. Emit it so the dashboard CSV matches the weekly
+      // email (which iterates snapshots directly). Respect the PM filter via
+      // pmFilteredProjectIds. Legacy months are intentionally skipped — they're
+      // sourced from historical_revenue, not snapshots.
+      if (!LEGACY_MONTHS.has(b.key)) {
+        for (const s of snapshotsByMonth.get(b.key) ?? []) {
+          if (perProject.has(s.project_id)) continue
+          if (!pmFilteredProjectIds.has(s.project_id)) continue
+          const project = projectById.get(s.project_id)
+          if (!project) continue
+          rows.push({
+            Month: b.key,
+            Client: project.client_name,
+            Project: project.project_name,
+            'SOW #': project.sow_number ?? '',
+            Status: project.status,
+            'Practice Manager': project.project_manager ?? '',
+            'Total Hours': Number(s.total_hours).toFixed(2),
+            'Bill Rate': Number(s.bill_rate).toFixed(2),
+            'Bill Rate Locked': s.is_locked ? 'Yes' : 'No',
+            Revenue: Math.round(Number(s.revenue) * 100) / 100,
+            'Engagement Start': project.engagement_start ?? '',
+            'Engagement End': project.engagement_end ?? '',
+          })
+        }
+      }
+    }
+    return rows
+  }, [filteredBuckets, contributionMap, projectMonthDetailMap, snapshotByKey, projects, snapshots, pmFilteredProjectIds])
 
   /** Open the drill-down dialog for a given bucket key and category */
   const openDrilldown = useCallback((bucketKey: string, bucketLabel: string, category: CatKey | 'total') => {
@@ -436,5 +570,6 @@ export function useRevenueData() {
     hasActiveFilters,
     getFilters,
     applyFilters,
+    buildExportRows,
   }
 }

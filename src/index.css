@@ -1,4 +1,9 @@
+/* Inter (current body font, kept for backward-compat until pages are redesigned) */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* Geist Sans + Mono (self-hosted, used by new primitives + redesigned pages) */
+@import '@fontsource-variable/geist/index.css';
+@import '@fontsource-variable/geist-mono/index.css';
 
 * {
   box-sizing: border-box;
@@ -15,11 +20,22 @@
    * below.
    */
 
-  /* Brand accent (used for primary actions, focus rings, nav highlights) */
+  /* ─────────────────────────────────────────────────────────────
+     Brand accent (primary actions, focus rings, nav highlights)
+     ───────────────────────────────────────────────────────────── */
   --brand-green: #D6B25E;
   --brand-green-dark: #006C35;
+  --brand-green-hover: #E2C47A;   /* one step lighter, for hover on primary surfaces */
+  --on-brand: #0A1410;            /* text/icon color on a brand-colored surface */
 
-  /* Backgrounds */
+  /* Aliases for resourcing capacity bars (over-capacity = rust, not a bright red) */
+  --brand-red: #B65540;
+  --brand-red-dark: #4D1F12;
+  --brand-red-hover: #C9654F;
+
+  /* ─────────────────────────────────────────────────────────────
+     Backgrounds (dark theme — default)
+     ───────────────────────────────────────────────────────────── */
   --bg-body: #08130F;
   --bg-sidebar: #06100C;
   --bg-content: #0A1712;
@@ -27,34 +43,112 @@
   --bg-card-alt: #132A20;
   --bg-input: #0D1F17;
   --bg-tertiary: #132A20;
+  --bg-elevated: #17301F;         /* one step above card, for hover */
 
-  /* Borders (sand at low opacity) */
+  /* ─────────────────────────────────────────────────────────────
+     Borders (sand at low opacity)
+     --border and --border-subtle are the legacy pair used by existing
+     pages. The soft/strong/focus tokens are used opt-in by the
+     primitives in src/components/ui and by redesigned pages.
+     ───────────────────────────────────────────────────────────── */
   --border: rgba(232, 219, 192, 0.18);
   --border-subtle: rgba(232, 219, 192, 0.08);
+  --border-soft: rgba(232, 219, 192, 0.10);
+  --border-strong: rgba(232, 219, 192, 0.28);
+  --border-focus: var(--brand-green);
 
-  /* Text */
+  /* ─────────────────────────────────────────────────────────────
+     Text
+     ───────────────────────────────────────────────────────────── */
   --text-primary: #F7FFF8;
   --text-secondary: #B9CDBF;
   --text-muted: #789284;
 
-  /* Operational / severity palette (used by badges, status pills) */
+  /* ─────────────────────────────────────────────────────────────
+     Operational / severity palette — stroke + fill
+     (used by badges, status pills)
+     ───────────────────────────────────────────────────────────── */
   --color-critical: #B65540;
   --color-high: #C8A24F;
   --color-medium: #D6B25E;
   --color-low: #789284;
   --color-info: #2FD27A;
+  --color-success: #3DDC84;
 
   --fill-critical: #2D1813;
   --fill-high: #2A2010;
   --fill-medium: #2A2010;
   --fill-low: #16201B;
   --fill-info: #0A4A26;
+  --fill-success: #0D3D22;
 
-  /* Aliases for resourcing capacity bars (over-capacity = rust, not a bright red) */
-  --brand-red: #B65540;
-  --brand-red-dark: #4D1F12;
+  /* ─────────────────────────────────────────────────────────────
+     Accent glows (halos, focus rings, hover micro-feedback)
+     ───────────────────────────────────────────────────────────── */
+  --accent-green-glow: rgba(214, 178, 94, 0.22);
+  --accent-red-glow: rgba(182, 85, 64, 0.22);
 
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  /* ─────────────────────────────────────────────────────────────
+     Type system
+     ───────────────────────────────────────────────────────────── */
+  --font-sans: 'Inter', 'Geist Variable', system-ui, -apple-system, sans-serif;
+  --font-display: 'Geist Variable', 'Inter', system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-3xl: 40px;
+  --text-display: 56px;
+
+  --leading-tight: 1.1;
+  --leading-snug: 1.3;
+  --leading-normal: 1.5;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.08em;
+
+  /* ─────────────────────────────────────────────────────────────
+     Spacing scale
+     ───────────────────────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* ─────────────────────────────────────────────────────────────
+     Radius
+     ───────────────────────────────────────────────────────────── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 9999px;
+
+  /* ─────────────────────────────────────────────────────────────
+     Motion
+     ───────────────────────────────────────────────────────────── */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 360ms;
+
+  /* ─────────────────────────────────────────────────────────────
+     Global type defaults
+     ───────────────────────────────────────────────────────────── */
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
   color: var(--text-secondary);
@@ -62,6 +156,33 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Light theme (scaffolded — hidden behind the dev-only toggle in
+   src/lib/theme.ts until rollout). Same forest/sand family, inverted.
+   ─────────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg-body: #F6F4EE;
+  --bg-sidebar: #FFFFFF;
+  --bg-content: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-card-alt: #F1EEE6;
+  --bg-input: #FFFFFF;
+  --bg-tertiary: #E6E1D5;
+  --bg-elevated: #EFEBE1;
+
+  --border: rgba(30, 50, 40, 0.18);
+  --border-subtle: rgba(30, 50, 40, 0.08);
+  --border-soft: rgba(30, 50, 40, 0.10);
+  --border-strong: rgba(30, 50, 40, 0.28);
+
+  --text-primary: #14201A;
+  --text-secondary: #3E5247;
+  --text-muted: #6E8378;
+
+  --accent-green-glow: rgba(214, 178, 94, 0.16);
+  --accent-red-glow: rgba(182, 85, 64, 0.14);
 }
 
 body {
@@ -72,11 +193,18 @@ body {
   min-height: 100vh;
 }
 
+/* ───────────────────────────────────────────────────────────────
+   Headings — kept on Inter for now (no visible page changes).
+   Redesigned pages opt into Geist via the primitives.
+   ─────────────────────────────────────────────────────────────── */
 h1, h2, h3 {
   color: var(--text-primary);
   font-weight: 700;
 }
 
+/* ───────────────────────────────────────────────────────────────
+   Tables (existing styling, unchanged)
+   ─────────────────────────────────────────────────────────────── */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -104,6 +232,10 @@ tr:hover {
   background: var(--bg-card-alt);
 }
 
+/* ───────────────────────────────────────────────────────────────
+   Buttons (existing global styling, unchanged — superseded by the
+   <Button> primitive in src/components/ui on redesigned pages)
+   ─────────────────────────────────────────────────────────────── */
 button {
   border-radius: 6px;
   border: 1px solid var(--brand-green-dark);
@@ -120,4 +252,17 @@ button {
 button:hover {
   background: var(--brand-green);
   border-color: var(--brand-green);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Focus system — outline that grows on hover-while-focused
+   ─────────────────────────────────────────────────────────────── */
+*:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  transition: outline-offset var(--duration-fast) var(--ease-out);
+}
+
+*:focus-visible:hover {
+  outline-offset: 3px;
 }

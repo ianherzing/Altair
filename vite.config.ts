@@ -8,6 +8,10 @@ export default defineConfig({
   esbuild: {
     drop: ['console', 'debugger'],
   },
+  // Dev only: forward /api/* to the local API server (npm run dev:api).
+  server: {
+    proxy: { '/api': 'http://localhost:3001' },
+  },
   test: {
     globals: true,
     environment: 'jsdom',

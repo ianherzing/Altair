@@ -8,7 +8,7 @@
 
 ## Key Directories
 
-- `src/pages/` — Page components (Resourcing, Projects, Engineers, etc.)
+- `src/pages/` — Page components (Resourcing, Projects, Consultants, etc.)
 - `src/components/` — Shared UI components
 - `src/hooks/` — Data-fetching hooks (one per dashboard)
 - `src/lib/` — Supabase client, API client, auth context, utilities
@@ -19,15 +19,15 @@
   EngagementSource / TaskSink / TimeOffSource / NotificationSink
 - `api/ingest/` — Webhook handlers (X-API-Key-authed)
 - `api/rpc/` — Authenticated write RPCs
-- `supabase/` — Schema and numbered migrations
+- `supabase/` — Consolidated schema (`schema.sql`), revenue engine, demo seed, local CLI config
 - `templates/` — JSON project-task templates
 
 ## Conventions
 
-- **CSS:** Inline styles via CSS variables (`var(--bg-card)`, `var(--text-primary)`, etc.). No CSS frameworks. Neutral dark palette — override in `src/index.css` to rebrand.
+- **CSS:** Inline styles via CSS variables (`var(--bg-card)`, `var(--text-primary)`, etc.). No CSS frameworks. Deep-forest dark palette — override the tokens in `src/index.css` to rebrand. Design tokens (type scale, spacing, radius, motion, focus ring, light-theme scaffold) and the primitives in `src/components/ui/` (Card, Section, Stat, Button, Field/Input, Badge, StatusDot, DataTable) are documented in `docs/design-system.md`. Redesigned pages use primitives + tokens; no hardcoded hex.
 - **State:** React `useState` / `useMemo`. No state management library.
 - **Data access:** Pages call `src/lib/api.ts` helpers. **Pages must not call `supabase.from()` or `supabase.rpc()` directly** — the `authz-lint.yml` CI check enforces this.
-- **API handlers:** Always wrap in `withAuth()` (JWT-authed) or `withApiKeyAuth()` (x-api-key-authed). Missing wrapper = CI failure.
+- **API handlers:** Always wrap in `withAuth()` (JWT-authed) or `withApiKeyAuth()` (x-api-key-authed). Mechanical validate → RPC → audit handlers use the `makeRpcHandler()` factory in `api/_lib/make-rpc-handler.ts` (which wraps `withAuth` for you). Missing wrapper = CI failure.
 - **TypeScript:** Strict mode. Avoid `any`.
 - **Validation:** Use `api/_lib/validate.ts` helpers (`isUUID`, `isEmail`, etc.) for all user-supplied inputs.
 - **Permissions:** Casbin + Supabase RLS + column whitelists. Never bypass RLS from the client.
@@ -49,5 +49,5 @@ When wiring a new external system, add a new file next to the references (do not
 ## Testing
 
 - `npm run lint` — ESLint
-- `npm test` — Vitest (runs what's in `src/**/*.test.ts`)
+- `npm test` — Vitest (runs `src/**/*.test.ts` and `api/**/*.test.ts`)
 - No e2e harness yet.

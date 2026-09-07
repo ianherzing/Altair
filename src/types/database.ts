@@ -12,6 +12,11 @@ export const NON_RESOURCEABLE_TITLES = new Set([
   'Program Coordinator',
 ])
 
+/** Titles shown in resourcing for scheduling, but excluded from capacity & utilization metrics */
+export const NON_CAPACITY_TITLES = new Set([
+  'Managed Services Consultant',
+])
+
 export interface Consultant {
   id: string
   full_name: string

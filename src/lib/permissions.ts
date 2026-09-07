@@ -5,7 +5,7 @@ import { useAuth } from './auth'
 const ROLE_ROUTES: Record<UserRole, string[] | null> = {
   pmo_admin: null, // all routes
   consultant_readonly: ['/', '/projects', '/resourcing', '/consultants', '/skills', '/holidays', '/mentor-tree'],
-  finance_viewer: ['/', '/projects', '/resourcing', '/consultants', '/skills', '/mentor-tree'],
+  finance_viewer: ['/', '/projects', '/resourcing', '/consultants', '/skills', '/mentor-tree', '/revenue', '/historicals', '/margin'],
   leadership: ['/', '/projects', '/resourcing', '/consultants', '/skills', '/revenue', '/historicals', '/capacity', '/margin', '/utilization', '/permissions', '/sync-log', '/security', '/mentor-tree'],
 }
 

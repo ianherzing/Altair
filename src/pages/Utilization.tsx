@@ -204,7 +204,7 @@ export function Utilization() {
             </div>
 
             <button onClick={exportCsv} style={btnStyle} title="Export as CSV">Export CSV</button>
-            <SavedViewBar page="utilization" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} />
+            <SavedViewBar page="utilization" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} onClear={() => applyFilters({ selectedYear: String(new Date().getFullYear()), filterManagers: [], filterConsultants: [], sortCol: 'name', sortAsc: true })} />
           </div>
         </div>
 
@@ -256,7 +256,7 @@ export function Utilization() {
                 cursor: 'pointer', userSelect: 'none',
               }}
             >
-              ENGINEER {sortCol === 'name' ? (sortAsc ? '\u25B2' : '\u25BC') : ''}
+              CONSULTANT {sortCol === 'name' ? (sortAsc ? '\u25B2' : '\u25BC') : ''}
             </div>
 
             {/* Month headers */}

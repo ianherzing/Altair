@@ -183,7 +183,7 @@ export function SkillsMatrix() {
               position: 'sticky', left: 0, zIndex: 4,
               background: 'var(--bg-card)',
             }}>
-              ENGINEER
+              CONSULTANT
             </div>
             {/* Util Target header */}
             <div style={{

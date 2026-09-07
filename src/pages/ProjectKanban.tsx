@@ -205,7 +205,7 @@ export function ProjectKanban() {
         <input
           value={searchText}
           onChange={e => setSearchText(e.target.value)}
-          placeholder="Search client / project..."
+          placeholder="Search client / project / ALT-ID..."
           style={{ ...filterBtnStyle, width: 200 }}
         />
 
