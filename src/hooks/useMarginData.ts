@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
 import { useLoadData } from '../lib/useLoadData'
 import { useIsPmoAdmin } from '../lib/permissions'
+import { useAuth } from '../lib/auth'
 import { monthsBetween, formatMonth, quarterKey } from '../lib/financeUtils'
 import { getCostRateForMonth } from '../lib/marginUtils'
 import type { Project, ConsultantCostRate, HistoricalRevenue } from '../types/database'
@@ -39,6 +40,7 @@ function distributeHoursToMonth(a: AssignmentBasic, year: number, month: number)
 
 export function useMarginData() {
   const isPmoAdmin = useIsPmoAdmin()
+  const { role } = useAuth()
   const [projects, setProjects] = useState<Project[]>([])
   const [assignments, setAssignments] = useState<AssignmentBasic[]>([])
   const [costRateHistory, setCostRateHistory] = useState<ConsultantCostRate[]>([])
@@ -71,7 +73,7 @@ export function useMarginData() {
     const [projData, assignData, crData, legacyData] = await Promise.all([
       api.getProjects({ project_type: 'eq.billable', is_active: 'eq.true' }),
       api.getAssignments(),
-      isPmoAdmin ? api.getCostRates() : Promise.resolve([]),
+      (isPmoAdmin || role === 'finance_viewer') ? api.getCostRates() : Promise.resolve([]),
       api.getHistoricalRevenue({ year: 'eq.2026', month: 'in.(January,February,March)' }, undefined, 1000),
     ])
 

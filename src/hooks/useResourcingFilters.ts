@@ -105,13 +105,18 @@ export function useResourcingFilters({
   )
 
   const filteredConsultants = useMemo(() => {
+    const q = searchText ? searchText.toLowerCase() : ''
+    const uidMatchProjectIds = q
+      ? new Set(projects.filter(p => p.altair_uid.toLowerCase().includes(q)).map(p => p.id))
+      : null
+
     return consultants.filter(eng => {
       if (searchText) {
-        const q = searchText.toLowerCase()
         const nameMatch = eng.full_name.toLowerCase().includes(q)
         const skillMatch = eng.skills?.some(s => s.toLowerCase().includes(q))
         const paMatch = eng.passion_area?.toLowerCase().includes(q)
-        if (!nameMatch && !skillMatch && !paMatch) return false
+        const uidMatch = !!uidMatchProjectIds && eng.assignments.some(a => uidMatchProjectIds.has(a.project_id))
+        if (!nameMatch && !skillMatch && !paMatch && !uidMatch) return false
       }
       // Manager filter: consultant-level in By Consultant view only. In By Project view
       // it's applied at the project level (managerProjectIds) so other consultants on
@@ -138,7 +143,7 @@ export function useResourcingFilters({
       if (statusFilteredProjectIds && !eng.assignments.some(a => statusFilteredProjectIds.has(a.project_id))) return false
       return true
     })
-  }, [consultants, viewMode, searchText, filterManager, filterTitle, filterConsultants, filterPassion, activeSkillFilters, consultantSkillsMap, sowFilteredProjectIds, practiceManagerProjectIds, statusFilteredProjectIds])
+  }, [consultants, projects, viewMode, searchText, filterManager, filterTitle, filterConsultants, filterPassion, activeSkillFilters, consultantSkillsMap, sowFilteredProjectIds, practiceManagerProjectIds, statusFilteredProjectIds])
 
   const { activeProjectGroups, doneProjectGroups } = useMemo(() => {
     if (viewMode !== 'project') return { activeProjectGroups: [] as ProjectWithConsultants[], doneProjectGroups: [] as ProjectWithConsultants[] }

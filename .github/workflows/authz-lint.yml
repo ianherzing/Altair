@@ -15,20 +15,25 @@ jobs:
         run: |
           EXIT=0
 
-          # Check all API RPC handlers use withAuth.
+          # Handlers must wrap with withAuth, either directly or via the
+          # makeRpcHandler factory in api/_lib/make-rpc-handler.ts which
+          # wraps every handler with withAuth(handler, opts.authz).
+          AUTH_PATTERN="withAuth|makeRpcHandler"
+
+          # Check all API RPC handlers.
           # Handlers live in api/_rpc/ (the underscore prefix excludes them
           # from Vercel function bundling — they're dispatched by api/rpc/[name].ts).
           for f in api/_rpc/*.ts; do
-            if ! grep -q "withAuth" "$f"; then
-              echo "::error file=$f::Missing withAuth() — all API handlers must use withAuth"
+            if ! grep -qE "$AUTH_PATTERN" "$f"; then
+              echo "::error file=$f::Missing withAuth() or makeRpcHandler() — all API handlers must authenticate"
               EXIT=1
             fi
           done
 
           # Check named API handlers (not lib/, not catch-all)
           for f in api/batch.ts; do
-            if [ -f "$f" ] && ! grep -q "withAuth" "$f"; then
-              echo "::error file=$f::Missing withAuth() — all API handlers must use withAuth"
+            if [ -f "$f" ] && ! grep -qE "$AUTH_PATTERN" "$f"; then
+              echo "::error file=$f::Missing withAuth() or makeRpcHandler() — all API handlers must authenticate"
               EXIT=1
             fi
           done

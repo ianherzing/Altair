@@ -25,6 +25,7 @@ export function Revenue() {
     availablePMs, filteredMonthKeys, availableYears,
     displayBuckets, openDrilldown, maxVal, totals,
     hasActiveFilters, getFilters, applyFilters,
+    buildExportRows,
   } = useRevenueData()
 
   // Build SVG area chart — dynamic width based on number of data points
@@ -77,15 +78,11 @@ export function Revenue() {
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map(pct => maxVal * pct)
 
   function exportRevenueCsv() {
-    const rows = displayBuckets.map(b => ({
-      Period: b.label,
-      'Soft (Unconfirmed)': Math.round(b.soft_unconfirmed * 100) / 100,
-      'Soft (At Risk)': Math.round(b.soft_at_risk * 100) / 100,
-      'Hard Scheduled': Math.round(b.hard * 100) / 100,
-      Total: Math.round(b.total * 100) / 100,
-    }))
-    const mode = viewMode === 'quarterly' ? 'quarterly' : 'monthly'
-    downloadCsv(rows, `altair-revenue-${mode}-${new Date().toISOString().slice(0, 10)}.csv`)
+    // Per-project rows across the currently filtered months.
+    // Always month-grain (quarter-by-project rollups don't add value; finance
+    // pivots in Excel). Matches the columns sent in the weekly finance email.
+    const rows = buildExportRows()
+    downloadCsv(rows, `altair-revenue-by-project-${new Date().toISOString().slice(0, 10)}.csv`)
   }
 
   if (loading || error) return <LoadingState loading={loading} error={error} retry={retry} message="Loading revenue..." />
@@ -227,7 +224,7 @@ export function Revenue() {
           <button onClick={() => setViewMode('monthly')} style={{ ...btnStyle, ...(viewMode === 'monthly' ? activeBtn : {}) }}>Monthly</button>
           <button onClick={() => setViewMode('quarterly')} style={{ ...btnStyle, ...(viewMode === 'quarterly' ? activeBtn : {}) }}>Quarterly</button>
           <button onClick={exportRevenueCsv} style={btnStyle} title="Export as CSV">Export CSV</button>
-          <SavedViewBar page="revenue" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} />
+          <SavedViewBar page="revenue" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} onClear={() => applyFilters({ viewMode: 'monthly', selectedYear: '2026', selectedMonths: [], filterPracticeManagers: [] })} />
         </div>
       </div>
 

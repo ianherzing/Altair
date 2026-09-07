@@ -5,7 +5,7 @@ import { useLoadData } from '../lib/useLoadData'
 import { HOURS_PER_DAY, getWorkingDaysInMonth, getHolidaysInMonth, distributeHoursToMonth, formatMonth } from '../lib/dateUtils'
 import { buildQuarterlyBuckets, computeTotals } from '../lib/capacityUtils'
 import type { Consultant, Holiday, PassionArea, Project } from '../types/database'
-import { NON_RESOURCEABLE_TITLES } from '../types/database'
+import { NON_RESOURCEABLE_TITLES, NON_CAPACITY_TITLES } from '../types/database'
 import type { AssignmentBasic, MonthBucket, ViewMode, ValueMode } from '../types/capacity'
 
 export function useCapacityData() {
@@ -41,7 +41,10 @@ export function useCapacityData() {
 
     const projectMap = new Map(projectData.map(p => [p.id, p]))
 
-    setConsultants(engData.filter(e => !NON_RESOURCEABLE_TITLES.has(e.title || '')))
+    setConsultants(engData.filter(e => {
+      const title = e.title || ''
+      return !NON_RESOURCEABLE_TITLES.has(title) && !NON_CAPACITY_TITLES.has(title)
+    }))
     setAssignments(assignData.map(a => {
       const proj = projectMap.get(a.project_id)
       return {

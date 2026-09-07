@@ -298,7 +298,7 @@ export function Capacity() {
           <button onClick={() => setViewMode('monthly')} style={{ ...btnStyle, ...(viewMode === 'monthly' ? activeBtn : {}) }}>Monthly</button>
           <button onClick={() => setViewMode('quarterly')} style={{ ...btnStyle, ...(viewMode === 'quarterly' ? activeBtn : {}) }}>Quarterly</button>
           <button onClick={exportCapacityCsv} style={btnStyle} title="Export as CSV">Export CSV</button>
-          <SavedViewBar page="capacity" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} />
+          <SavedViewBar page="capacity" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} onClear={() => applyFilters({ viewMode: 'monthly', valueMode: 'hours', selectedYear: '2026', selectedMonths: [], selectedPassionAreas: [] })} />
         </div>
       </div>
 

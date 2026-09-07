@@ -65,13 +65,22 @@ describe('canAccess', () => {
       expect(canAccess('finance_viewer', '/skills')).toBe(true)
     })
 
+    it('can access financial dashboards (revenue, historicals, margin)', () => {
+      expect(canAccess('finance_viewer', '/revenue')).toBe(true)
+      expect(canAccess('finance_viewer', '/historicals')).toBe(true)
+      expect(canAccess('finance_viewer', '/margin')).toBe(true)
+    })
+
     it('cannot access /holidays (not in their list)', () => {
       expect(canAccess('finance_viewer', '/holidays')).toBe(false)
     })
 
-    it('cannot access finance-only routes not in their list', () => {
-      expect(canAccess('finance_viewer', '/revenue')).toBe(false)
+    it('cannot access leadership-only routes not in their list', () => {
+      expect(canAccess('finance_viewer', '/capacity')).toBe(false)
+      expect(canAccess('finance_viewer', '/utilization')).toBe(false)
       expect(canAccess('finance_viewer', '/permissions')).toBe(false)
+      expect(canAccess('finance_viewer', '/sync-log')).toBe(false)
+      expect(canAccess('finance_viewer', '/security')).toBe(false)
     })
 
     it('can access sub-paths of allowed routes', () => {

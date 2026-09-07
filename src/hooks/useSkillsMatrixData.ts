@@ -3,7 +3,7 @@ import { api } from '../lib/api'
 import { useLoadData } from '../lib/useLoadData'
 import { useIsReadOnly } from '../lib/permissions'
 import type { Consultant, Skill, ConsultantSkill, PassionArea } from '../types/database'
-import { NON_RESOURCEABLE_TITLES } from '../types/database'
+import { NON_RESOURCEABLE_TITLES, NON_CAPACITY_TITLES } from '../types/database'
 
 interface CellRef {
   consultantId: string
@@ -37,10 +37,15 @@ export function useSkillsMatrixData() {
     ])
     const sorted = consultants.slice().sort((a, b) => a.full_name.localeCompare(b.full_name))
     // allActiveConsultants feeds the mentor dropdown — include is_mentor-only
-    // people (e.g., Matthew Jackoski) so they show up as selectable mentors.
+    // people so they show up as selectable mentors.
     setAllActiveConsultants(sorted)
     // Grid rows: only currently active, resourceable consultants.
-    setConsultants(sorted.filter(e => e.is_active && !NON_RESOURCEABLE_TITLES.has(e.title || '')))
+    // MSEs (NON_CAPACITY_TITLES) are excluded from the skills matrix per
+    // operational scope — they appear in Resourcing only.
+    setConsultants(sorted.filter(e => {
+      const title = e.title || ''
+      return e.is_active && !NON_RESOURCEABLE_TITLES.has(title) && !NON_CAPACITY_TITLES.has(title)
+    }))
     setSkills(skills)
     setConsultantSkills(consultantSkills)
     setPassionAreas(passionAreas.filter(p => p.is_active))

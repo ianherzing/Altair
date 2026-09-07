@@ -68,7 +68,7 @@ export function useKanbanFilters(projects: Project[], assignments: Assignment[])
       if (!matchesDateRange(p, filterDateStart, filterDateEnd)) return false
       if (searchText) {
         const q = searchText.toLowerCase()
-        const haystack = `${p.client_name} ${p.project_name}`.toLowerCase()
+        const haystack = `${p.client_name} ${p.project_name} ${p.altair_uid}`.toLowerCase()
         if (!haystack.includes(q)) return false
       }
       return true

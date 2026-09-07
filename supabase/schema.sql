@@ -56,7 +56,7 @@ CREATE TYPE public.user_role AS ENUM (
 -- ------------------------------------------------------------------
 -- 3. SEQUENCES
 -- ------------------------------------------------------------------
--- Monotonic JUP-#### id stamped onto every project row on insert.
+-- Monotonic ALT-#### id stamped onto every project row on insert.
 CREATE SEQUENCE IF NOT EXISTS public.altair_uid_seq START 1000;
 
 -- ------------------------------------------------------------------
@@ -116,7 +116,7 @@ CREATE TABLE public.consultants (
 -- projects: the engagements (seeded from EngagementSource adapter).
 CREATE TABLE public.projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- Stable numeric id assigned by Altair (JUP-####).
+  -- Stable numeric id assigned by Altair (ALT-####).
   altair_uid TEXT UNIQUE NOT NULL,
   -- Free-form upstream id (Salesforce Opp id, Jira key, CSV ref, etc.).
   external_id TEXT UNIQUE,
@@ -332,7 +332,7 @@ CREATE INDEX idx_projects_active      ON public.projects (is_active);
 CREATE INDEX idx_projects_external_id ON public.projects (external_id);
 
 CREATE INDEX idx_assignments_project ON public.assignments (project_id);
-CREATE INDEX idx_assignments_engineer ON public.assignments (consultant_id);
+CREATE INDEX idx_assignments_consultant ON public.assignments (consultant_id);
 CREATE INDEX idx_assignments_dates   ON public.assignments (start_date, end_date);
 
 CREATE INDEX idx_consultant_cost_rates_lookup
@@ -419,7 +419,38 @@ BEGIN
 END;
 $$;
 
--- Monotonic JUP-#### id; stamped onto projects on insert.
+-- Keep consultants.hourly_cost_rate in sync with the latest row in
+-- consultant_cost_rates (effective_date <= CURRENT_DATE) for the affected
+-- consultant. Fires on every write path to the history table — RPC, SQL
+-- editor, bulk script, ORM — so the denormalized column can't drift.
+-- SECURITY DEFINER so it can write public.consultants regardless of caller
+-- role; bounded because it only touches hourly_cost_rate for one row using
+-- data from the row that fired it.
+CREATE OR REPLACE FUNCTION public.sync_consultant_current_cost_rate()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  target_consultant UUID;
+BEGIN
+  target_consultant := COALESCE(NEW.consultant_id, OLD.consultant_id);
+  UPDATE public.consultants
+  SET hourly_cost_rate = (
+    SELECT hourly_rate
+    FROM public.consultant_cost_rates
+    WHERE consultant_id = target_consultant
+      AND effective_date <= CURRENT_DATE
+    ORDER BY effective_date DESC
+    LIMIT 1
+  )
+  WHERE id = target_consultant;
+  RETURN NULL;
+END;
+$$;
+
+-- Monotonic ALT-#### id; stamped onto projects on insert.
 CREATE OR REPLACE FUNCTION public.set_altair_uid()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -428,7 +459,7 @@ SET search_path = ''
 AS $$
 BEGIN
   IF NEW.altair_uid IS NULL THEN
-    NEW.altair_uid := 'JUP-' || LPAD(nextval('public.altair_uid_seq')::TEXT, 4, '0');
+    NEW.altair_uid := 'ALT-' || LPAD(nextval('public.altair_uid_seq')::TEXT, 4, '0');
   END IF;
   RETURN NEW;
 END;
@@ -564,6 +595,10 @@ CREATE TRIGGER tasks_stamp_completed_trg
   FOR EACH ROW EXECUTE FUNCTION public.tasks_stamp_completed();
 
 -- Audit triggers (financial / role changes — all captured).
+CREATE TRIGGER trg_sync_consultant_current_cost_rate
+  AFTER INSERT OR UPDATE OR DELETE ON public.consultant_cost_rates
+  FOR EACH ROW EXECUTE FUNCTION public.sync_consultant_current_cost_rate();
+
 CREATE TRIGGER trg_audit_consultant_cost_rates
   AFTER INSERT OR UPDATE OR DELETE ON public.consultant_cost_rates
   FOR EACH ROW EXECUTE FUNCTION public.audit_table_changes();
@@ -952,18 +987,8 @@ BEGIN
                   modified_at = now()
   RETURNING id INTO v_id;
 
-  -- Keep denormalized consultants.hourly_cost_rate in sync with the most
-  -- recent effective_date <= today.
-  UPDATE public.consultants
-  SET hourly_cost_rate = (
-    SELECT hourly_rate
-    FROM public.consultant_cost_rates
-    WHERE consultant_id = p_consultant_id
-      AND effective_date <= CURRENT_DATE
-    ORDER BY effective_date DESC
-    LIMIT 1
-  )
-  WHERE id = p_consultant_id;
+  -- Denormalization on consultants.hourly_cost_rate is handled by
+  -- trg_sync_consultant_current_cost_rate (see TRIGGERS section).
 
   RETURN v_id;
 END;
@@ -991,16 +1016,8 @@ BEGIN
 
   DELETE FROM public.consultant_cost_rates WHERE id = p_cost_rate_id;
 
-  UPDATE public.consultants
-  SET hourly_cost_rate = (
-    SELECT hourly_rate
-    FROM public.consultant_cost_rates
-    WHERE consultant_id = v_consultant_id
-      AND effective_date <= CURRENT_DATE
-    ORDER BY effective_date DESC
-    LIMIT 1
-  )
-  WHERE id = v_consultant_id;
+  -- Denormalization on consultants.hourly_cost_rate is handled by
+  -- trg_sync_consultant_current_cost_rate (see TRIGGERS section).
 END;
 $$;
 
@@ -1531,7 +1548,7 @@ CREATE POLICY "Only pmo_admin can read user_roles_audit_log" ON public.user_role
 --
 -- The API layer uses the service_role key and bypasses these grants. The
 -- grants below protect against browser-side authenticated clients trying
--- to SELECT sensitive financial columns (hourly_cost_rate, sow_amount).
+-- to SELECT the sensitive financial column (hourly_cost_rate).
 -- ------------------------------------------------------------------
 
 -- consultants: authenticated can SELECT everything except hourly_cost_rate.
@@ -1543,11 +1560,12 @@ GRANT SELECT (
   hire_date, offboarded_at, created_at, updated_at
 ) ON public.consultants TO authenticated;
 
--- projects: authenticated can SELECT everything except sow_amount.
+-- projects: authenticated can SELECT every column (sow_amount is not
+-- sensitive; the contracted value is shown on the Projects pages).
 REVOKE SELECT ON public.projects FROM authenticated;
 GRANT SELECT (
   id, external_id, altair_uid, client_name, project_name, project_type,
-  sow_number, planned_hours, status,
+  sow_number, sow_amount, planned_hours, status,
   engagement_start, engagement_end, done_at, archived_at,
   notes, is_active, midway_notification_sent,
   manager_id, program_manager_id, managing_director_id,
@@ -1615,11 +1633,11 @@ BEGIN
     );
   END IF;
 
-  -- projects: publish everything except sow_amount.
+  -- projects: publish every column (sow_amount is not sensitive).
   IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname='supabase_realtime' AND tablename='projects') THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.projects (
       id, external_id, altair_uid, client_name, project_name, project_type,
-      sow_number, planned_hours, status,
+      sow_number, sow_amount, planned_hours, status,
       engagement_start, engagement_end, done_at, archived_at,
       notes, is_active, midway_notification_sent,
       manager_id, program_manager_id, managing_director_id,

@@ -1,14 +1,14 @@
 blank_issues_enabled: false
 contact_links:
   - name: Read the README first
-    url: https://github.com/dr-h-cyber/Altair#readme
+    url: https://github.com/ianherzing/Altair#readme
     about: Most "how do I…" questions are answered there.
   - name: Fork it and make it yours
-    url: https://github.com/dr-h-cyber/Altair#make-it-yours
+    url: https://github.com/ianherzing/Altair#make-it-yours
     about: |
       Altair is a fork-and-go exoskeleton. We don't actively triage issues
       or merge non-trivial features. If something doesn't fit your team,
       change it in your fork — that's the whole point.
   - name: Security issue?
-    url: https://github.com/dr-h-cyber/Altair/security/advisories/new
+    url: https://github.com/ianherzing/Altair/security/advisories/new
     about: Report privately via GitHub Security Advisories.

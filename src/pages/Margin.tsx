@@ -1,3 +1,4 @@
+import { useMemo, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { downloadCsv } from '../lib/csv'
 import { LoadingState } from '../components/LoadingState'
@@ -8,7 +9,20 @@ import {
 } from '../lib/financeUtils'
 import { COLOR_REVENUE, COLOR_COST, COLOR_MARGIN_POS, COLOR_MARGIN_NEG } from '../lib/marginUtils'
 import { useMarginData } from '../hooks/useMarginData'
-import type { MarginProjectContribution } from '../types/margin'
+import type { MarginMonthBucket, MarginProjectContribution } from '../types/margin'
+
+type BucketSortKey = 'period' | 'revenue' | 'cost' | 'margin' | 'pct'
+type ProjectSortKey = 'client' | 'project' | 'revenue' | 'cost' | 'margin' | 'pct'
+type SortDir = 'asc' | 'desc'
+
+interface ProjectAggRow {
+  project_id: string
+  client_name: string
+  project_name: string
+  revenue: number
+  cost: number
+  margin: number
+}
 
 const fmt = fmtCurrencyWhole
 const fmtFull = fmtCurrency
@@ -30,10 +44,89 @@ export function Margin() {
     drilldown, setDrilldown,
     availableClients, availableProjectNames, availablePMs,
     filteredMonthKeys, availableYears,
-    displayBuckets, openDrilldown,
+    displayBuckets, displayContributionMap, openDrilldown,
     totals, totalMarginPct,
     hasActiveFilters, getFilters, applyFilters,
   } = useMarginData()
+
+  const [bucketSort, setBucketSort] = useState<{ key: BucketSortKey; dir: SortDir }>({ key: 'period', dir: 'asc' })
+  const [projectSort, setProjectSort] = useState<{ key: ProjectSortKey; dir: SortDir }>({ key: 'margin', dir: 'desc' })
+
+  function bucketPct(b: MarginMonthBucket) { return b.revenue > 0 ? (b.margin / b.revenue) * 100 : 0 }
+
+  const sortedBuckets = useMemo(() => {
+    const arr = [...displayBuckets]
+    const dir = bucketSort.dir === 'asc' ? 1 : -1
+    arr.sort((a, b) => {
+      switch (bucketSort.key) {
+        case 'period':  return dir * a.key.localeCompare(b.key)
+        case 'revenue': return dir * (a.revenue - b.revenue)
+        case 'cost':    return dir * (a.cost - b.cost)
+        case 'margin':  return dir * (a.margin - b.margin)
+        case 'pct':     return dir * (bucketPct(a) - bucketPct(b))
+      }
+    })
+    return arr
+  }, [displayBuckets, bucketSort])
+
+  const projectRows: ProjectAggRow[] = useMemo(() => {
+    const acc = new Map<string, ProjectAggRow>()
+    for (const b of displayBuckets) {
+      const contribs = displayContributionMap.get(b.key) || []
+      for (const c of contribs) {
+        const existing = acc.get(c.project_id)
+        if (existing) {
+          existing.revenue += c.sow_amount
+          existing.cost += c.cost
+          existing.margin = existing.revenue - existing.cost
+        } else {
+          acc.set(c.project_id, {
+            project_id: c.project_id,
+            client_name: c.client_name,
+            project_name: c.project_name,
+            revenue: c.sow_amount,
+            cost: c.cost,
+            margin: c.sow_amount - c.cost,
+          })
+        }
+      }
+    }
+    return Array.from(acc.values())
+  }, [displayBuckets, displayContributionMap])
+
+  const sortedProjectRows = useMemo(() => {
+    const arr = [...projectRows]
+    const dir = projectSort.dir === 'asc' ? 1 : -1
+    arr.sort((a, b) => {
+      switch (projectSort.key) {
+        case 'client':  return dir * a.client_name.localeCompare(b.client_name)
+        case 'project': return dir * a.project_name.localeCompare(b.project_name)
+        case 'revenue': return dir * (a.revenue - b.revenue)
+        case 'cost':    return dir * (a.cost - b.cost)
+        case 'margin':  return dir * (a.margin - b.margin)
+        case 'pct': {
+          const pa = a.revenue > 0 ? a.margin / a.revenue : 0
+          const pb = b.revenue > 0 ? b.margin / b.revenue : 0
+          return dir * (pa - pb)
+        }
+      }
+    })
+    return arr
+  }, [projectRows, projectSort])
+
+  const projectTotals = useMemo(() => projectRows.reduce(
+    (t, r) => ({ revenue: t.revenue + r.revenue, cost: t.cost + r.cost, margin: t.margin + r.margin }),
+    { revenue: 0, cost: 0, margin: 0 },
+  ), [projectRows])
+
+  function toggleBucketSort(key: BucketSortKey) {
+    setBucketSort(s => s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: key === 'period' ? 'asc' : 'desc' })
+  }
+  function toggleProjectSort(key: ProjectSortKey) {
+    setProjectSort(s => s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: (key === 'client' || key === 'project') ? 'asc' : 'desc' })
+  }
+  function bucketSortIndicator(key: BucketSortKey) { return bucketSort.key === key ? (bucketSort.dir === 'asc' ? ' ▲' : ' ▼') : '' }
+  function projectSortIndicator(key: ProjectSortKey) { return projectSort.key === key ? (projectSort.dir === 'asc' ? ' ▲' : ' ▼') : '' }
 
   function exportMarginCsv() {
     const rows = displayBuckets.map(b => ({
@@ -206,7 +299,7 @@ export function Margin() {
           <button onClick={() => setViewMode('monthly')} style={{ ...btnStyle, ...(viewMode === 'monthly' ? activeBtn : {}) }}>Monthly</button>
           <button onClick={() => setViewMode('quarterly')} style={{ ...btnStyle, ...(viewMode === 'quarterly' ? activeBtn : {}) }}>Quarterly</button>
           <button onClick={exportMarginCsv} style={btnStyle} title="Export as CSV">Export CSV</button>
-          <SavedViewBar page="margin" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} />
+          <SavedViewBar page="margin" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} onClear={() => applyFilters({ viewMode: 'monthly', selectedYear: '2026', selectedMonths: [], filterClients: [], filterProjects: [], filterPracticeManagers: [] })} />
         </div>
       </div>
 
@@ -278,15 +371,15 @@ export function Margin() {
         <table style={{ marginTop: '0.5rem' }}>
           <thead>
             <tr>
-              <th>{viewMode === 'monthly' ? 'Month' : 'Quarter'}</th>
-              <th style={{ textAlign: 'right', color: COLOR_REVENUE }}>Revenue</th>
-              <th style={{ textAlign: 'right', color: COLOR_COST }}>Cost</th>
-              <th style={{ textAlign: 'right' }}>Margin</th>
-              <th style={{ textAlign: 'right' }}>Margin %</th>
+              <th onClick={() => toggleBucketSort('period')} style={sortableThStyle}>{viewMode === 'monthly' ? 'Month' : 'Quarter'}{bucketSortIndicator('period')}</th>
+              <th onClick={() => toggleBucketSort('revenue')} style={{ ...sortableThStyle, textAlign: 'right', color: COLOR_REVENUE }}>Revenue{bucketSortIndicator('revenue')}</th>
+              <th onClick={() => toggleBucketSort('cost')} style={{ ...sortableThStyle, textAlign: 'right', color: COLOR_COST }}>Cost{bucketSortIndicator('cost')}</th>
+              <th onClick={() => toggleBucketSort('margin')} style={{ ...sortableThStyle, textAlign: 'right' }}>Margin{bucketSortIndicator('margin')}</th>
+              <th onClick={() => toggleBucketSort('pct')} style={{ ...sortableThStyle, textAlign: 'right' }}>Margin %{bucketSortIndicator('pct')}</th>
             </tr>
           </thead>
           <tbody>
-            {displayBuckets.map(b => {
+            {sortedBuckets.map(b => {
               const pct = b.revenue > 0 ? (b.margin / b.revenue) * 100 : 0
               const mColor = b.margin >= 0 ? COLOR_MARGIN_POS : COLOR_MARGIN_NEG
               return (
@@ -319,6 +412,53 @@ export function Margin() {
         </table>
       )}
 
+      {/* Margin per Project — totals across the active filter scope */}
+      {projectRows.length > 0 && (
+        <div style={{ marginTop: '2.5rem' }}>
+          <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem' }}>Margin per Project</h3>
+          <table style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th onClick={() => toggleProjectSort('client')} style={sortableThStyle}>Client{projectSortIndicator('client')}</th>
+                <th onClick={() => toggleProjectSort('project')} style={sortableThStyle}>Project{projectSortIndicator('project')}</th>
+                <th onClick={() => toggleProjectSort('revenue')} style={{ ...sortableThStyle, textAlign: 'right', color: COLOR_REVENUE }}>Revenue{projectSortIndicator('revenue')}</th>
+                <th onClick={() => toggleProjectSort('cost')} style={{ ...sortableThStyle, textAlign: 'right', color: COLOR_COST }}>Cost{projectSortIndicator('cost')}</th>
+                <th onClick={() => toggleProjectSort('margin')} style={{ ...sortableThStyle, textAlign: 'right' }}>Margin{projectSortIndicator('margin')}</th>
+                <th onClick={() => toggleProjectSort('pct')} style={{ ...sortableThStyle, textAlign: 'right' }}>Margin %{projectSortIndicator('pct')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedProjectRows.map(r => {
+                const pct = r.revenue > 0 ? (r.margin / r.revenue) * 100 : 0
+                const mColor = r.margin >= 0 ? COLOR_MARGIN_POS : COLOR_MARGIN_NEG
+                const isLegacy = r.project_id.startsWith('legacy:')
+                return (
+                  <tr key={r.project_id}>
+                    <td>{r.client_name}</td>
+                    <td>
+                      {isLegacy
+                        ? <span>{r.project_name}</span>
+                        : <Link to={`/projects/${r.project_id}`} style={{ color: 'var(--brand-green)', textDecoration: 'none' }}>{r.project_name}</Link>}
+                    </td>
+                    <td style={{ textAlign: 'right', color: COLOR_REVENUE }}>{fmtFull(r.revenue)}</td>
+                    <td style={{ textAlign: 'right', color: COLOR_COST }}>{fmtFull(r.cost)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, color: mColor }}>{fmtFull(r.margin)}</td>
+                    <td style={{ textAlign: 'right', color: mColor }}>{fmtPct(pct)}</td>
+                  </tr>
+                )
+              })}
+              <tr style={{ borderTop: '2px solid var(--border)' }}>
+                <td colSpan={2} style={{ fontWeight: 700 }}>Total ({projectRows.length} projects)</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: COLOR_REVENUE }}>{fmtFull(projectTotals.revenue)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: COLOR_COST }}>{fmtFull(projectTotals.cost)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: projectTotals.margin >= 0 ? COLOR_MARGIN_POS : COLOR_MARGIN_NEG }}>{fmtFull(projectTotals.margin)}</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: projectTotals.margin >= 0 ? COLOR_MARGIN_POS : COLOR_MARGIN_NEG }}>{projectTotals.revenue > 0 ? fmtPct((projectTotals.margin / projectTotals.revenue) * 100) : '—'}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <style>{`.drilldown-cell:hover { text-decoration: underline; }`}</style>
 
       {/* Drill-down Dialog */}
@@ -327,6 +467,11 @@ export function Margin() {
       )}
     </div>
   )
+}
+
+const sortableThStyle: CSSProperties = {
+  cursor: 'pointer',
+  userSelect: 'none',
 }
 
 /* ------------------------------------------------------------------ */

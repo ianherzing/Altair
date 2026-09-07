@@ -77,7 +77,7 @@ describe('buildTreeIndex', () => {
   })
 
   it('inactive non-mentor with no children does not appear anywhere', () => {
-    // An offboarded engineer who is not a mentor and has no children
+    // An offboarded consultant who is not a mentor and has no children
     // should be dropped entirely from the tree view.
     const ghost = c({ full_name: 'Ghost', is_active: false, is_mentor: false })
     const idx = buildTreeIndex([ghost])

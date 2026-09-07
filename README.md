@@ -1,15 +1,15 @@
 # Altair
 
-<video src="https://github.com/dr-h-cyber/Altair/releases/download/v0.1.0/altair-overview.mp4" controls width="100%"></video>
+<video src="https://github.com/ianherzing/Altair/releases/download/v0.1.0/altair-overview.mp4" controls width="100%"></video>
 
-> 🎥 [**Watch the overview**](https://github.com/dr-h-cyber/Altair/releases/download/v0.1.0/altair-overview.mp4) — what's in the box and how to make it yours. (If the player above doesn't load in your client, the link works as a download.)
+> 🎥 [**Watch the overview**](https://github.com/ianherzing/Altair/releases/download/v0.1.0/altair-overview.mp4) — what's in the box and how to make it yours. (If the player above doesn't load in your client, the link works as a download.)
 
 A Professional Services Automation (PSA) **exoskeleton** — the data model,
 dashboards, auth, and RLS are built in; integrations with your CRM, task
 manager, HR system, and chat tool are not. You bring your own, wired through
 a small set of adapter interfaces.
 
-Altair ships the hard parts (engineer resourcing, capacity and utilization
+Altair ships the hard parts (consultant resourcing, capacity and utilization
 math, month-locked revenue snapshots, cost-rate history, permissions) and
 leaves what's trivial for you to hook up (where engagements come from, where
 PTO comes from, where task checklists live).
@@ -62,11 +62,12 @@ Requirements: **Docker** and the **Supabase CLI**
 ([install guide](https://supabase.com/docs/guides/cli)).
 
 ```bash
-git clone https://github.com/dr-h-cyber/Altair.git
+git clone https://github.com/ianherzing/Altair.git
 cd Altair
 npm install
 npm run bootstrap:local
-npm run dev        # → open http://localhost:5173
+npm run dev:api    # terminal 1 — runs the api/ handlers locally
+npm run dev        # terminal 2 — open http://localhost:5173
 ```
 
 The bootstrap script:
@@ -77,7 +78,9 @@ The bootstrap script:
 4. Creates a demo admin `demo@example.com` (password `demo-password-1234`)
 5. Writes `.env.local` with your local Supabase keys
 
-Log in with the demo account and click around. To reset everything and
+The frontend reads everything through the serverless handlers in `api/`, so
+`npm run dev:api` runs them on plain Node (no Vercel CLI needed) and Vite
+proxies `/api/*` to it. Log in with the demo account and click around. To reset everything and
 re-seed, run `npm run bootstrap:reset`. When you're done, `supabase stop`.
 
 ## What's in the box
@@ -85,7 +88,7 @@ re-seed, run `npm run bootstrap:reset`. When you're done, `supabase stop`.
 - **Resourcing** — week-by-week consultant allocations on a timeline grid,
   drag-to-assign, capacity-vs-assigned bars
 - **Capacity** — per-consultant monthly capacity with holidays and PTO
-  factored in; per-engineer utilization targets
+  factored in; per-consultant utilization targets
 - **Utilization** — billable / non-billable / PTO breakdowns by consultant
 - **Revenue** — monthly snapshots with lock-on-month-end semantics
 - **Margin** — cost-rate × hours against revenue, per project per month,
@@ -204,6 +207,7 @@ call to your CRM's API, and schedule it via a GitHub Actions cron.
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `ALLOWED_ORIGINS=https://altair.example.com`
    - `ALTAIR_BASE_URL=https://altair.example.com`

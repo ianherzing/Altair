@@ -4,7 +4,7 @@
 
 Please report security vulnerabilities **privately** through GitHub's built-in security advisory flow:
 
-→ https://github.com/dr-h-cyber/Altair/security/advisories/new
+→ https://github.com/ianherzing/Altair/security/advisories/new
 
 Or navigate to the repository's **Security** tab and click **"Report a vulnerability"**.
 

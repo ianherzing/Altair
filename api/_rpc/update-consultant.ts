@@ -8,7 +8,7 @@ import { isUUID, isString, isEmail, isBool, isISODate } from '../_lib/validate.j
  * Maps dynamic frontend field updates to explicit RPC parameters.
  * The frontend uses { [field]: value } — we map each to the correct param.
  * Only 6 allowed fields; hourly_cost_rate is NOT a parameter
- * (uses separate update_engineer_cost_rate RPC).
+ * (uses separate update_consultant_cost_rate RPC).
  */
 const ALLOWED_FIELDS = new Set(['full_name', 'email', 'title', 'manager', 'is_active', 'country', 'offboarded_at', 'mentor'])
 
@@ -53,8 +53,8 @@ async function handler(req: VercelRequest, res: VercelResponse, ctx: AuthContext
   })
 
   if (error) {
-    if (error.message === 'ENGINEER_INVALID_MANAGER') return res.status(422).json({ error: 'Manager must be an active consultant' })
-    if (error.message === 'ENGINEER_INVALID_MENTOR') return res.status(422).json({ error: 'Mentor must be an active consultant' })
+    if (error.message === 'CONSULTANT_INVALID_MANAGER') return res.status(422).json({ error: 'Manager must be an active consultant' })
+    if (error.message === 'CONSULTANT_INVALID_MENTOR') return res.status(422).json({ error: 'Mentor must be an active consultant' })
     return res.status(500).json({ error: 'Internal server error' })
   }
 

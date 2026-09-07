@@ -117,7 +117,7 @@ export function ProjectDetail({ projectId: propId }: { projectId?: string } = {}
             <Stat label="SOW Amount" value={'$' + Number(project.sow_amount).toLocaleString()} />
             <Stat label="Planned Hours" value={String(project.planned_hours)} />
             <Stat label="Assigned Hours" value={String(totalAssignedHours)} />
-            <Stat label="Remaining Hours" value={String(remainingHours)}
+            <Stat label="Remaining Hours" value={String(Number(remainingHours.toFixed(2)))}
               color={remainingHours < 0 ? 'var(--color-critical)' : remainingHours === 0 ? 'var(--color-info)' : '#e0e0e0'} />
             <Stat label="Implied Rate" value={impliedRate > 0 ? '$' + impliedRate.toFixed(2) + '/hr' : '—'} />
           </div>

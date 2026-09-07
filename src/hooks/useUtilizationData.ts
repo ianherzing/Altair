@@ -10,7 +10,7 @@ import {
   distributeHoursToMonth,
   formatMonth,
 } from '../lib/dateUtils'
-import { NON_RESOURCEABLE_TITLES } from '../types/database'
+import { NON_RESOURCEABLE_TITLES, NON_CAPACITY_TITLES } from '../types/database'
 import type { Consultant, Holiday } from '../types/database'
 import type { AssignmentFlat, MonthCell, DrilldownData } from '../types/utilization'
 
@@ -119,7 +119,10 @@ export function useUtilizationData(): UseUtilizationDataReturn {
 
     const projectMap = new Map(projectData.map(p => [p.id, p]))
 
-    setConsultants(engData.filter(e => !NON_RESOURCEABLE_TITLES.has(e.title || '')))
+    setConsultants(engData.filter(e => {
+      const title = e.title || ''
+      return !NON_RESOURCEABLE_TITLES.has(title) && !NON_CAPACITY_TITLES.has(title)
+    }))
     setAssignments(assignData.map(a => {
       const proj = projectMap.get(a.project_id)
       return {

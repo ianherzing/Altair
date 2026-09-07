@@ -9,7 +9,7 @@ import { isString } from '../_lib/validate.js'
 // server-side detail, but distinct enough to map to the right HTTP status.
 const RPC_ERROR_STATUS: Record<string, number> = {
   MENTOR_NO_EMAIL: 401,
-  MENTOR_NO_ENGINEER: 404,
+  MENTOR_NO_CONSULTANT: 404,
   MENTOR_INVALID: 422,
   MENTOR_INTERNAL_ERROR: 500,
 }
