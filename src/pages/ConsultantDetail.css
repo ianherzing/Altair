@@ -1,0 +1,360 @@
+/* ═══════════ Consultant Detail — Vercel/Geist dossier ═══════════
+   Two-column dossier: a sticky LEFT rail (Profile, inline edits, Skills,
+   at-a-glance Utilization, Cost) and a main column (Monthly Breakdown →
+   Project History → Cost Rate History). All rules scoped under .ed; token-only
+   colors. Skill-chip and utilization-heat hues come inline from RATING_COLORS
+   / utilColorFn in the .tsx (no token exists for those scales). */
+
+/* Cap + center the page so it doesn't sprawl full-bleed on wide monitors and
+   reads with symmetric gutters instead of a lopsided right-side void. */
+.ed { max-width: 1400px; margin: 0 auto; }
+
+.ed-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+.ed-back:hover { color: var(--text-secondary); }
+
+/* ───────── Header ───────── */
+.ed-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: nowrap;
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+.ed-subtitle { font-size: var(--text-md); color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ed-headspacer { margin-left: auto; }
+
+/* Header entry button for terminating — readable "soft danger" (the same
+   critical-on-glow recipe as the Terminated tag; the loud solid-red Button was
+   getting clipped at the right edge and read too hot for a rare admin action).
+   The Confirm-Termination button inside the form stays solid danger. */
+.ed-term-btn {
+  flex-shrink: 0;
+  background: var(--accent-red-glow);
+  color: var(--color-critical);
+  border: 1px solid color-mix(in srgb, transparent 55%, var(--color-critical));
+}
+.ed-term-btn:hover {
+  background: color-mix(in srgb, transparent 80%, var(--color-critical));
+  border-color: var(--color-critical);
+}
+.ed-term-btn svg { width: 13px; height: 13px; }
+.ed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  padding: 4px 11px 4px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-card-alt);
+  color: var(--text-secondary);
+}
+.ed-badge .ed-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--color-success); }
+.ed-badge--term { color: var(--color-critical); }
+.ed-badge--term .ed-dot { background: var(--color-critical); }
+
+/* Terminated banner — bright critical on a faint red glow (Consultants parity). */
+.ed-term-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--accent-red-glow);
+  border: 1px solid color-mix(in srgb, transparent 55%, var(--color-critical));
+  border-radius: var(--radius-lg);
+  padding: 13px var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.ed-term-title { font-size: var(--text-base); font-weight: 600; color: var(--color-critical); }
+.ed-term-sub { font-size: var(--text-sm); color: var(--text-muted); margin-top: 3px; }
+
+/* Terminate confirmation form */
+.ed-term-form {
+  background: var(--bg-card);
+  border: 1px solid color-mix(in srgb, transparent 55%, var(--color-critical));
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+.ed-term-form-note { font-size: var(--text-sm); color: var(--text-secondary); margin-bottom: var(--space-3); }
+.ed-term-form-row { display: flex; gap: var(--space-3); align-items: flex-end; flex-wrap: wrap; }
+.ed-term-form-actions { display: flex; gap: var(--space-2); align-self: flex-end; margin-left: auto; }
+
+/* shared field label */
+.ed-field { display: flex; flex-direction: column; gap: var(--space-2); }
+.ed-field-label { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500; color: var(--text-primary); }
+
+/* ───────── Dossier grid (rail LEFT) ───────── */
+.ed-dossier {
+  display: grid;
+  grid-template-columns: 332px minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+  margin-top: var(--space-4);
+}
+.ed-main { min-width: 0; }
+.ed-rail {
+  position: sticky;
+  top: var(--space-4);
+  /* nudge down so the card top lines up with the first section's title text */
+  margin-top: 5px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+}
+@media (max-width: 1080px) {
+  .ed-dossier { grid-template-columns: 1fr; }
+  .ed-rail { position: static; margin-top: 0; }
+  .ed-head { flex-wrap: wrap; }
+}
+
+/* ───────── Rail panels ───────── */
+.ed-panel { padding: 15px var(--space-4); border-top: 1px solid var(--border-subtle); }
+.ed-panel:first-child { border-top: none; }
+.ed-ph { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin: 0 0 11px; min-height: 18px; }
+.ed-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.ed-frow { display: flex; align-items: baseline; justify-content: space-between; padding: 7px 0; gap: var(--space-3); }
+.ed-k { font-size: var(--text-sm); color: var(--text-muted); white-space: nowrap; }
+.ed-v { font-family: var(--font-mono); font-size: var(--text-base); color: var(--text-primary); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ed-v--sans { font-family: var(--font-sans); }
+.ed-v--muted { color: var(--text-muted); font-style: italic; }
+
+/* Passion-area value as a subtle tag pill (Skills-matrix parity). */
+.ed-passion-pill {
+  display: inline-flex; align-items: center; max-width: 100%;
+  background: var(--bg-elevated); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill); padding: 3px 11px;
+  font-family: var(--font-sans); font-size: var(--text-sm); color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* editable rows — key on the left, the control hugs the right */
+.ed-editrow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 32px; }
+.ed-editrow .ed-k { color: var(--text-secondary); }
+.ed-editrow .ed-v { padding-right: var(--space-2); }
+
+/* inline ghost SearchableSelect neutralized for a data cell: selected value is
+   primary text (not filter-cyan); caret + hover wash signal it's editable. */
+.ed-edit-select { max-width: 200px; }
+.ed-edit-select .ui-multiselect { max-width: 100%; }
+.ed-edit-select .ui-multiselect__chev { margin-left: var(--space-2); }
+.ed-edit-select .ui-multiselect__trigger--has .ui-multiselect__label { color: var(--text-primary); }
+
+/* numeric util-target field */
+.ed-numfield {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 4px var(--space-2);
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+.ed-numfield:focus-within { border-color: var(--border-strong); box-shadow: 0 0 0 3px var(--accent-cyan-glow); }
+.ed-numfield input {
+  width: 32px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: inherit;
+  text-align: right;
+  outline: none;
+}
+.ed-numfield-suffix { color: var(--text-muted); }
+
+/* util target chip (in the rail eyebrow row) */
+.ed-util-target { font-family: var(--font-mono); font-size: var(--text-xs); }
+.ed-util-target.ok { color: var(--color-success); }
+.ed-util-target.under { color: var(--color-high); }
+
+/* rail compact utilization */
+.ed-ru-pct { font-family: var(--font-mono); font-size: var(--text-xl); font-weight: 600; line-height: 1.1; }
+.ed-ru-meta { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); margin: 3px 0 11px; }
+.ed-ru-bar { display: flex; gap: 2px; margin-bottom: 5px; }
+.ed-ru-cell { flex: 1; height: 22px; border-radius: 2px; }
+.ed-ru-labels { display: flex; gap: 2px; }
+.ed-ru-labels span { flex: 1; text-align: center; font-size: 9px; font-family: var(--font-mono); color: var(--text-muted); text-transform: uppercase; }
+.ed-ru-labels span.future { opacity: 0.6; }
+
+/* ───────── Main: section headers ───────── */
+.ed-sect { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); margin: 0 0 var(--space-3); }
+.ed-sect:not(:first-child) { margin-top: var(--space-6); }
+.ed-sect h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.ed-cnt { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-muted); font-weight: 400; }
+.ed-tools { display: flex; align-items: center; gap: var(--space-2); }
+.ed-empty { color: var(--text-muted); font-size: var(--text-sm); margin: 0; }
+
+/* ───────── Tables (Projects/ProjectDetail parity) ───────── */
+.ed-tbl-wrap { overflow: auto; border: 1px solid var(--border-soft); border-radius: var(--radius-lg); }
+.ed table { width: 100%; border-collapse: collapse; }
+.ed thead th {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  white-space: nowrap;
+  background: var(--bg-content);
+  border-bottom: 1px solid var(--border-soft);
+}
+.ed th.num, .ed td.num { text-align: right; }
+.ed th.ctr, .ed td.ctr { text-align: center; }
+/* Project is the single fluid column: it absorbs slack AND truncates long
+   names with an ellipsis (hover = full title), so the other columns stay tight
+   and Status is always pinned right, never clipped (max-width:0 + width:100%
+   is the fluid-ellipsis table-cell recipe; base cells are white-space:nowrap). */
+.ed th.grow { width: 100%; }
+.ed td.grow { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ed tbody td {
+  padding: 0 var(--space-3);
+  height: 42px;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.ed tbody tr:last-child td { border-bottom: none; }
+.ed tbody tr { transition: background var(--duration-fast) var(--ease-out); }
+.ed tbody tr:nth-child(2n) td { background: var(--card-inset); }
+.ed tbody tr:hover td { background: var(--bg-card); }
+.ed-plink { color: var(--brand-cyan); text-decoration: none; font-weight: 500; }
+.ed-plink:hover { text-decoration: underline; text-underline-offset: 2px; }
+.ed-dt { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-muted); white-space: nowrap; }
+.ed-hrs { font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); }
+.ed-cell-muted { color: var(--text-muted); }
+.ed-ptype { font-size: var(--text-sm); font-weight: 600; }
+
+/* status pills */
+.ed-pill { display: inline-flex; font-size: var(--text-xs); font-weight: 600; padding: 2px 9px; border-radius: var(--radius-pill); }
+.ed-pill--active { background: color-mix(in srgb, transparent 84%, var(--color-success)); color: var(--color-success); }
+.ed-pill--done { background: var(--card-inset); color: var(--text-muted); border: 1px solid var(--border-subtle); }
+.ed-pill--up { background: var(--accent-cyan-glow); color: var(--brand-cyan); }
+
+/* row actions (hover-reveal) */
+.ed-rowact { display: inline-flex; gap: var(--space-2); transition: opacity var(--duration-fast) var(--ease-out); }
+@media (hover: hover) {
+  .ed-rowact { opacity: 0; }
+  .ed tbody tr:hover .ed-rowact,
+  .ed-rowact:focus-within { opacity: 1; }
+}
+.ed-xdel { color: var(--text-muted); }
+.ed-xdel:hover { color: var(--color-critical); background: var(--accent-red-glow); }
+
+/* ───────── Monthly utilization breakdown table ───────── */
+.ed-util-row.is-clickable { cursor: pointer; }
+.ed-util-row.is-future td { opacity: 0.6; font-style: italic; }
+.ed-util-row.is-expanded td { background: var(--accent-cyan-glow); }
+.ed-util-caret { font-size: 9px; color: var(--text-muted); margin-right: var(--space-2); }
+.ed-util-sub { font-size: var(--text-xs); color: var(--text-muted); margin-left: var(--space-1); }
+.ed-util-bill { color: var(--brand-cyan); }
+.ed-util-pct { font-weight: 600; }
+.ed-util-asg td { background: var(--card-inset); height: 34px; }
+.ed-util-asg td:first-child { padding-left: var(--space-6); }
+.ed-util-asg-client { color: var(--text-muted); font-size: var(--text-sm); margin-left: var(--space-2); }
+.ed-util-asg-type { font-size: var(--text-xs); margin-left: var(--space-1); opacity: 0.85; }
+.ed-util-total td { border-top: 2px solid var(--border-soft); font-weight: 700; color: var(--text-primary); }
+.ed-util-total .ed-util-bill { color: var(--brand-cyan); }
+
+/* ───────── Skills chips (rail panel) ───────── */
+.ed-skills { display: flex; flex-wrap: wrap; gap: 7px; }
+.ed-skill { display: inline-flex; align-items: center; gap: var(--space-2); border-radius: var(--radius-md); padding: 5px 10px; font-size: var(--text-base); font-weight: 600; }
+.ed-skill-rl { font-size: var(--text-xs); font-weight: 500; opacity: 0.8; }
+.ed-skills-empty { color: var(--text-muted); font-size: var(--text-sm); margin: 0; }
+
+/* ───────── Add-rate form ───────── */
+.ed-rate-form {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+  /* compact card — was stretching edge-to-edge with Save shoved to the far right */
+  max-width: 560px;
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.ed-rate-input {
+  width: 110px;
+  height: 38px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  padding: 0 var(--space-3);
+  outline: none;
+}
+.ed-rate-input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-cyan-glow); }
+.ed-rate-form-actions { display: flex; gap: var(--space-2); margin-left: auto; }
+
+/* ───────── Loading skeleton (shimmer; .sk/.sk--shimmer global in ui.css) ───────── */
+.edsk { max-width: 1400px; margin: 0 auto; }
+.edsk-back { width: 130px; height: 13px; border-radius: var(--radius-sm); margin-top: var(--space-4); margin-bottom: 18px; }
+.edsk-titlebar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: 10px; }
+.edsk-title { width: 300px; max-width: 50vw; height: 30px; border-radius: var(--radius-md); }
+.edsk-badge { width: 84px; height: 24px; border-radius: var(--radius-pill); }
+.edsk-subtitle { width: 200px; height: 16px; }
+.edsk-dossier { display: grid; grid-template-columns: 332px minmax(0, 1fr); gap: var(--space-6); align-items: start; margin-top: var(--space-4); }
+.edsk-rail { background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: var(--radius-lg); margin-top: 5px; }
+.edsk-panel { padding: 15px var(--space-4); border-top: 1px solid var(--border-subtle); }
+.edsk-panel:first-child { border-top: none; }
+.edsk-eyebrow { height: 11px; margin-bottom: 14px; }
+.edsk-frow { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+.edsk-line { height: 11px; }
+.edsk-ru-pct { width: 64px; height: 20px; margin-bottom: 9px; }
+.edsk-ru-bar { display: flex; gap: 2px; margin-bottom: 6px; }
+.edsk-ru-cell { flex: 1; height: 22px; border-radius: 2px; }
+.edsk-ru-labels { display: flex; gap: 2px; }
+.edsk-ru-labels .sk { flex: 1; height: 9px; }
+.edsk-secttl { height: 18px; margin: 0 0 var(--space-3); }
+.edsk-secttl.gap { margin-top: var(--space-6); }
+.edsk-chip { height: 26px; border-radius: var(--radius-md); }
+.edsk-table { border: 1px solid var(--border-soft); border-radius: var(--radius-lg); overflow: hidden; }
+.edsk-trow { display: flex; align-items: center; gap: var(--space-4); height: 42px; padding: 0 var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.edsk-trow:last-child { border-bottom: none; }
+.edsk-trow--head { background: var(--bg-content); height: 34px; }
+.edsk-c { height: 11px; }
+@media (max-width: 1080px) {
+  .edsk-dossier { grid-template-columns: 1fr; }
+}

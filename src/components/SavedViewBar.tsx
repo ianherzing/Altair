@@ -182,7 +182,7 @@ function SavedViewBarInner({ page, getFilters, applyFilters, onClear }: Props) {
                 <div style={{ display: 'flex', gap: '0.2rem', flexShrink: 0 }}>
                   <button type="button" title={v.is_default ? 'Remove default' : 'Set as default'} onClick={(e) => { e.stopPropagation(); handleSetDefault(v.id, v.is_default) }} style={iconBtnStyle}>{v.is_default ? '★' : '☆'}</button>
                   {confirmDeleteId === v.id ? (
-                    <><button type="button" title="Confirm delete" onClick={(e) => { e.stopPropagation(); handleDelete(v.id) }} style={{ ...iconBtnStyle, color: '#E63948' }}>Yes</button><button type="button" title="Cancel" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null) }} style={iconBtnStyle}>No</button></>
+                    <><button type="button" title="Confirm delete" onClick={(e) => { e.stopPropagation(); handleDelete(v.id) }} style={{ ...iconBtnStyle, color: 'var(--brand-red)' }}>Yes</button><button type="button" title="Cancel" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null) }} style={iconBtnStyle}>No</button></>
                   ) : (
                     <button type="button" title="Delete view" onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(v.id) }} style={iconBtnStyle}>&times;</button>
                   )}

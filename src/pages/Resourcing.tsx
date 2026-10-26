@@ -1,28 +1,132 @@
 import { useState, useMemo, useCallback, useRef } from 'react'
+import type React from 'react'
 import { Link } from 'react-router-dom'
 import { useIsReadOnly } from '../lib/permissions'
 import { LoadingState } from '../components/LoadingState'
+import { PageTitle, Button, MultiSelect, DatePicker } from '../components/ui'
 import { SearchableSelect } from '../components/SearchableSelect'
 import { SavedViewBar } from '../components/SavedViewBar'
+import { AssignmentBarItem } from '../components/AssignmentBarItem'
+import { HolidayOverlay } from '../components/HolidayOverlay'
 import { TimelineGrid } from '../lib/TimelineGrid'
 import { useResourcingData } from '../hooks/useResourcingData'
 import { useResourcingFilters } from '../hooks/useResourcingFilters'
 import { useAssignments } from '../hooks/useAssignments'
+import { STATUS_COLORS } from '../lib/kanbanUtils'
 import {
-  getBarBackground, getBarTextColor,
-  HOLIDAY_BG, TYPE_LEGEND, STATUS_DOT_COLORS,
   EMPTY_ASSIGN_FORM, EMPTY_CONSULTANT_ASSIGN_FORM,
   getWeeks, formatWeek, getMonthHeaders,
   bizDaysBetween, advanceByBizDays, dateToStr,
   calcBusinessDays, calcWeeklyHours,
-  countHolidaysInWeek, getHolidayDaysInWeek,
-  assignmentBarLabel,
+  countHolidaysInWeek,
 } from '../lib/resourcingUtils'
 import {
-  modalLabelStyle, modalInputStyle, navBtnStyle,
-  filterInputStyle, inlineInputStyle, skillRangeInputStyle,
+  modalLabelStyle, modalInputStyle, inlineInputStyle,
 } from '../lib/resourcingStyles'
 import type { AssignmentWithDetails, ProjectWithConsultants } from '../types/resourcing'
+import './Resourcing.css'
+
+const PlusIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+)
+const ChevronDownIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+)
+const ChevronRightIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+    <path d="m9 6 6 6-6 6" />
+  </svg>
+)
+const ArrowLeftIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path d="M19 12H5M12 19l-7-7 7-7" />
+  </svg>
+)
+const ArrowRightIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path d="M5 12h14M12 5l7 7-7 7" />
+  </svg>
+)
+
+const countPillStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-mono)',
+  fontSize: 'var(--text-xs)',
+  color: 'var(--text-muted)',
+  background: 'var(--bg-card)',
+  border: '1px solid var(--border-soft)',
+  borderRadius: 'var(--radius-pill)',
+  padding: '1px 8px',
+  fontWeight: 500,
+}
+
+const ghostFieldStyle: React.CSSProperties = {
+  padding: '0.4rem 0.7rem',
+  fontSize: '0.8rem',
+  fontWeight: 500,
+  fontFamily: 'var(--font-display)',
+  borderRadius: 'var(--radius-md)',
+}
+
+const toolbarDividerStyle: React.CSSProperties = {
+  width: 1, height: 18, background: 'var(--border-soft)', margin: '0 var(--space-1)', flexShrink: 0,
+}
+
+function barClass(projectType: string, status: string): string {
+  if (projectType === 'pto') return 'res-bar--pto'
+  if (projectType === 'non_billable') return 'res-bar--nonbill'
+  if (status === 'to_do' || status === 'soft_unconfirmed' || status === 'soft_at_risk') return 'res-bar--soft'
+  return 'res-bar--hard'
+}
+
+const LEGEND = [
+  { label: 'Billable — Soft / At Risk', className: 'res-bar--soft' },
+  { label: 'Billable — Hard / Active / Done', className: 'res-bar--hard' },
+  { label: 'Non-Billable', className: 'res-bar--nonbill' },
+  { label: 'PTO', className: 'res-bar--pto' },
+  { label: 'Holiday', className: 'res-bar--holiday' },
+]
+
+const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
+  ['to_do', 'To Do'],
+  ['soft_unconfirmed', 'Soft — Unconfirmed'],
+  ['soft_at_risk', 'Soft — At Risk'],
+  ['hard_scheduled', 'Hard Scheduled'],
+  ['active', 'Active'],
+  ['done', 'Done'],
+].map(([value, label]) => ({ value, label }))
+
+function SkillRange({ min, max, onChange }: { min: number; max: number; onChange: (min: number, max: number) => void }) {
+  function pick(n: number) {
+    if (n < min) onChange(n, max)
+    else if (n > max) onChange(min, n)
+    else onChange(n, n)
+  }
+  return (
+    <span className="skill-range" title={`proficiency ${min}–${max}`}>
+      {[1, 2, 3].map(n => {
+        const on = n >= min && n <= max
+        return (
+          <div
+            key={n}
+            role="button"
+            tabIndex={0}
+            aria-pressed={on}
+            aria-label={`Set proficiency bound ${n}`}
+            className={`skill-range__cell${on ? ' skill-range__cell--on' : ''}`}
+            onClick={() => pick(n)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(n) } }}
+          >
+            {n}
+          </div>
+        )
+      })}
+    </span>
+  )
+}
 
 export function Resourcing() {
   const readOnly = useIsReadOnly()
@@ -40,26 +144,18 @@ export function Resourcing() {
     searchText, setSearchText,
     filterManager, setFilterManager,
     filterTitle, setFilterTitle,
-    showTitleFilter, setShowTitleFilter,
-    titleSearchText, setTitleSearchText,
     filterConsultants, setFilterConsultants,
-    showConsultantFilter, setShowConsultantFilter,
-    consultantSearchText, setConsultantSearchText,
     filterPassion, setFilterPassion,
     filterPracticeManager, setFilterPracticeManager,
     filterSow, setFilterSow,
-    showSowFilter, setShowSowFilter,
-    sowSearchText, setSowSearchText,
     filterStatus, setFilterStatus,
-    showStatusFilter, setShowStatusFilter,
-    showSkillFilters, setShowSkillFilters,
     managers, practiceManagers, titles,
-    activeSkillFilters, sowNumbers,
+    sowNumbers,
     projectOptions, sortedConsultants,
     filteredConsultants,
     activeProjectGroups, doneProjectGroups,
     hasActiveFilters,
-    toggleSkillFilter, updateSkillFilterRange, clearAllFilters,
+    clearAllFilters,
     getFilters, applyFilters,
   } = useResourcingFilters({
     consultants, projects, consultantSkillsMap, passionAreas,
@@ -197,62 +293,18 @@ export function Resourcing() {
   }
 
   function renderBar(a: AssignmentWithDetails, topOffset: number, country: string | null = null) {
-    const aStart = new Date(a.start_date + 'T00:00:00')
-    const aEnd = new Date(a.end_date + 'T00:00:00')
-    const startPct = dateToPct(aStart)
-    // End date is inclusive, so add 1 biz day for visual width
-    const endPct = dateToPct(advanceByBizDays(aEnd, 1))
-    const widthPct = endPct - startPct
-
-    if (startPct > 100 || endPct < 0) return null
-
-    const pType = a.projects?.project_type || 'billable'
-    const status = a.projects?.status || 'soft_unconfirmed'
-    const barBg = getBarBackground(pType, status)
-    const textColor = getBarTextColor(pType, status)
-    const projectLabel = a.projects
-      ? `${a.projects.client_name} — ${a.projects.project_name}`
-      : 'Unknown Project'
-    const isDraggingThis = dragging?.assignmentId === a.id
-
     return (
-      <div
+      <AssignmentBarItem
         key={a.id}
-        title={`${projectLabel}\n${a.start_date} → ${a.end_date}\n${a.total_hours} hrs`}
-        style={{
-          position: 'absolute',
-          left: `${Math.max(startPct, 0)}%`,
-          width: `${Math.min(widthPct, 100 - Math.max(startPct, 0))}%`,
-          top: topOffset, height: 26,
-          background: barBg, borderRadius: 4,
-          border: '1px solid rgba(0,0,0,0.25)',
-          display: 'flex', alignItems: 'center',
-          overflow: 'hidden', whiteSpace: 'nowrap',
-          fontSize: '0.7rem', fontWeight: 600, color: textColor,
-          opacity: isDraggingThis ? 0.7 : 0.9,
-          zIndex: isDraggingThis ? 10 : 2,
-          cursor: dragging ? 'grabbing' : 'grab',
-          transition: isDraggingThis ? 'none' : 'opacity 150ms',
-        }}
-        onMouseEnter={e => { if (!dragging) e.currentTarget.style.opacity = '1' }}
-        onMouseLeave={e => { if (!dragging) e.currentTarget.style.opacity = '0.9' }}
-      >
-        <div
-          onMouseDown={e => startDrag(e, a.id, 'resize-start', a.start_date, a.end_date)}
-          style={{ width: 6, minWidth: 6, height: '100%', cursor: 'ew-resize', flexShrink: 0 }}
-        />
-        <div
-          onMouseDown={e => startDrag(e, a.id, 'move', a.start_date, a.end_date)}
-          onClick={e => { if (!dragging) { e.stopPropagation(); openEditModal(a) } }}
-          style={{ flex: 1, height: '100%', display: 'flex', alignItems: 'center', padding: '0 4px', overflow: 'hidden' }}
-        >
-          {widthPct > 6 ? assignmentBarLabel(a.total_hours, a.start_date, a.end_date, holidayMap, country) : ''}
-        </div>
-        <div
-          onMouseDown={e => startDrag(e, a.id, 'resize-end', a.start_date, a.end_date)}
-          style={{ width: 6, minWidth: 6, height: '100%', cursor: 'ew-resize', flexShrink: 0 }}
-        />
-      </div>
+        a={a}
+        topOffset={topOffset}
+        country={country}
+        dateToPct={dateToPct}
+        dragging={dragging}
+        holidayMap={holidayMap}
+        onStartDrag={startDrag}
+        onOpenEdit={openEditModal}
+      />
     )
   }
 
@@ -288,12 +340,12 @@ export function Resourcing() {
         left: `${Math.max(0, leftPct)}%`,
         width: `${Math.min(widthPct, 100 - Math.max(0, leftPct))}%`,
         top: 6, bottom: 6,
-        background: 'rgba(17, 195, 219, 0.25)',
-        border: '2px dashed var(--brand-green)',
-        borderRadius: 4, zIndex: 6,
+        background: 'var(--accent-cyan-glow)',
+        border: '1px dashed var(--brand-cyan)',
+        borderRadius: 2, zIndex: 6,
         pointerEvents: 'none',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '0.55rem', color: 'var(--brand-green)', fontWeight: 600,
+        fontSize: '0.55rem', color: 'var(--brand-cyan)', fontWeight: 600,
         overflow: 'hidden', whiteSpace: 'nowrap',
       }}>
         {widthPct > 4 ? `${startLabel} → ${endLabel} (${bdays}d)` : ''}
@@ -327,15 +379,20 @@ export function Resourcing() {
             width: `${(1 / VISIBLE_WEEKS) * 100}%`,
             top: 0, bottom: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.6rem', fontWeight: 700,
-            color: isOver ? '#d98f45' : 'rgba(255,255,255,0.95)',
-            textShadow: '0 1px 2px rgba(0,0,0,0.7)',
-            zIndex: 3,
+            zIndex: 4,
             pointerEvents: 'none',
           }}
           title={`${Math.round(hrs)}h / ${availableHours}h${holidaysInWeek > 0 ? ` (${holidaysInWeek} holiday${holidaysInWeek > 1 ? 's' : ''})` : ''} (${pct}%)`}
         >
-          {pct}%
+          <span style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '0.65rem', fontWeight: 600,
+            color: isOver ? 'var(--util-chip-text-over)' : 'var(--util-chip-text)',
+            background: 'var(--util-chip-bg)',
+            borderRadius: 2, padding: '1px 6px',
+          }}>
+            {pct}%
+          </span>
         </div>
       )
     })
@@ -346,373 +403,152 @@ export function Resourcing() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 4rem)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <h2 style={{ margin: 0 }}>Resourcing</h2>
-          <div style={{ display: 'flex', gap: 0, border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden' }}>
-            <button
-              onClick={() => { setViewMode('consultant'); localStorage.setItem('altair-resourcing-view-mode', 'consultant') }}
-              style={{
-                ...navBtnStyle, border: 'none', borderRadius: 0, fontSize: '0.7rem', padding: '0.25rem 0.6rem',
-                background: viewMode === 'consultant' ? 'var(--brand-green-dark)' : 'var(--bg-card)',
-                color: viewMode === 'consultant' ? '#fff' : 'var(--text-secondary)',
-              }}
-            >
-              By Consultant
-            </button>
-            <button
-              onClick={() => { setViewMode('project'); localStorage.setItem('altair-resourcing-view-mode', 'project') }}
-              style={{
-                ...navBtnStyle, border: 'none', borderRadius: 0, fontSize: '0.7rem', padding: '0.25rem 0.6rem',
-                background: viewMode === 'project' ? 'var(--brand-green-dark)' : 'var(--bg-card)',
-                color: viewMode === 'project' ? '#fff' : 'var(--text-secondary)',
-              }}
-            >
-              By Project
-            </button>
-          </div>
+        <PageTitle
+          title="Resourcing"
+          meta={viewMode === 'consultant'
+            ? `(${filteredConsultants.length}${filteredConsultants.length !== consultants.length ? ` of ${consultants.length}` : ''})`
+            : `(${activeProjectGroups.length + doneProjectGroups.length})`}
+          style={{ margin: 0 }}
+        />
+        <div style={{
+          display: 'inline-flex', gap: 'var(--space-5)',
+          borderBottom: '1px solid var(--border-soft)',
+        }}>
+          {([
+            ['consultant', 'By Consultant'],
+            ['project', 'By Project'],
+          ] as const).map(([mode, label]) => {
+            const active = viewMode === mode
+            return (
+              <Button
+                key={mode}
+                variant="ghost"
+                size="sm"
+                className={`view-tab${active ? ' view-tab--active' : ''}`}
+                aria-pressed={active}
+                onClick={() => {
+                  setViewMode(mode)
+                  localStorage.setItem('altair-resourcing-view-mode', mode)
+                }}
+              >
+                {label}
+              </Button>
+            )
+          })}
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)', flexWrap: 'wrap', flexShrink: 0 }}>
         <input
-          type="text" placeholder="Search name, skill, passion area, ALT-ID..."
-          value={searchText} onChange={e => setSearchText(e.target.value)}
-          style={{ ...filterInputStyle, width: 220 }}
+          type="text"
+          placeholder="Search consultant, SOW #, or project..."
+          className="kanban-ghost"
+          value={searchText}
+          onChange={e => setSearchText(e.target.value)}
+          style={{ ...ghostFieldStyle, width: 220 }}
         />
+
+        <span style={toolbarDividerStyle} aria-hidden="true" />
+
         <SearchableSelect
+          variant="ghost"
           value={filterManager}
           onChange={setFilterManager}
           options={managerOptions}
           placeholder="All Managers"
-          style={{ minWidth: 170 }}
+          style={{ minWidth: 120 }}
         />
         <SearchableSelect
+          variant="ghost"
           value={filterPracticeManager}
           onChange={setFilterPracticeManager}
           options={practiceManagerOptions}
           placeholder="All Project Managers"
-          style={{ minWidth: 220 }}
+          style={{ minWidth: 120 }}
         />
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setShowTitleFilter(!showTitleFilter)}
-            style={{
-              ...filterInputStyle,
-              cursor: 'pointer',
-              background: filterTitle.size > 0 ? 'var(--brand-green-dark)' : 'var(--bg-card)',
-              color: filterTitle.size > 0 ? '#fff' : 'var(--text-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-            }}
-          >
-            <span>{filterTitle.size > 0 ? `Titles (${filterTitle.size})` : 'All Titles'}</span>
-            <span style={{ fontSize: '0.5rem', marginLeft: 'auto' }}>{showTitleFilter ? '\u25B2' : '\u25BC'}</span>
-          </button>
-          {showTitleFilter && (
-            <>
-            <div onClick={() => { setShowTitleFilter(false); setTitleSearchText('') }} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />
-            <div style={{
-              position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 50,
-              background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 6, width: 240, maxHeight: 320, display: 'flex', flexDirection: 'column',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-            }}>
-              <div style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Search title..."
-                  value={titleSearchText}
-                  onChange={e => setTitleSearchText(e.target.value)}
-                  style={{ ...filterInputStyle, width: '100%', fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
-                />
-              </div>
-              <div style={{ overflowY: 'auto', flex: 1 }}>
-                {filterTitle.size > 0 && (
-                  <div
-                    onClick={() => setFilterTitle(new Set())}
-                    style={{
-                      padding: '0.4rem 0.75rem', fontSize: '0.7rem', color: 'var(--brand-green)',
-                      cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                    }}
-                  >
-                    Clear selection
-                  </div>
-                )}
-                {titles
-                  .filter(t => !titleSearchText || t.toLowerCase().includes(titleSearchText.toLowerCase()))
-                  .map(t => (
-                  <label key={t} style={{
-                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    padding: '0.35rem 0.75rem', fontSize: '0.8rem',
-                    color: filterTitle.has(t) ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={filterTitle.has(t)}
-                      onChange={() => setFilterTitle(prev => {
-                        const next = new Set(prev)
-                        if (next.has(t)) next.delete(t)
-                        else next.add(t)
-                        return next
-                      })}
-                      style={{ accentColor: 'var(--brand-green)', flexShrink: 0 }}
-                    />
-                    {t}
-                  </label>
-                ))}
-              </div>
-            </div>
-            </>
-          )}
-        </div>
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setShowConsultantFilter(!showConsultantFilter)}
-            style={{
-              ...filterInputStyle,
-              cursor: 'pointer',
-              background: filterConsultants.size > 0 ? 'var(--brand-green-dark)' : 'var(--bg-card)',
-              color: filterConsultants.size > 0 ? '#fff' : 'var(--text-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-            }}
-          >
-            <span>{filterConsultants.size > 0 ? `Consultants (${filterConsultants.size})` : 'All Consultants'}</span>
-            <span style={{ fontSize: '0.5rem', marginLeft: '0.25rem' }}>{showConsultantFilter ? '\u25B2' : '\u25BC'}</span>
-          </button>
-          {showConsultantFilter && (
-            <>
-            <div onClick={() => { setShowConsultantFilter(false); setConsultantSearchText('') }} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />
-            <div style={{
-              position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 50,
-              background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 6, width: 240, maxHeight: 320, display: 'flex', flexDirection: 'column',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-            }}>
-              <div style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Search consultant..."
-                  value={consultantSearchText}
-                  onChange={e => setConsultantSearchText(e.target.value)}
-                  style={{ ...filterInputStyle, width: '100%', fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
-                />
-              </div>
-              <div style={{ overflowY: 'auto', flex: 1 }}>
-                {filterConsultants.size > 0 && (
-                  <div
-                    onClick={() => setFilterConsultants(new Set())}
-                    style={{
-                      padding: '0.4rem 0.75rem', fontSize: '0.7rem', color: 'var(--brand-green)',
-                      cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                    }}
-                  >
-                    Clear selection
-                  </div>
-                )}
-                {sortedConsultants
-                  .filter(eng => !consultantSearchText || eng.full_name.toLowerCase().includes(consultantSearchText.toLowerCase()))
-                  .map(eng => (
-                  <label key={eng.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    padding: '0.35rem 0.75rem', fontSize: '0.8rem',
-                    color: filterConsultants.has(eng.id) ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={filterConsultants.has(eng.id)}
-                      onChange={() => setFilterConsultants(prev => {
-                        const next = new Set(prev)
-                        if (next.has(eng.id)) next.delete(eng.id)
-                        else next.add(eng.id)
-                        return next
-                      })}
-                      style={{ accentColor: 'var(--brand-green)', flexShrink: 0 }}
-                    />
-                    {eng.full_name}
-                  </label>
-                ))}
-              </div>
-            </div>
-            </>
-          )}
-        </div>
+        <MultiSelect
+          label="Titles"
+          options={titles.map(t => ({ value: t, label: t }))}
+          value={[...filterTitle]}
+          onChange={next => setFilterTitle(new Set(next))}
+        />
+        <MultiSelect
+          label="Consultants"
+          options={sortedConsultants.map(eng => ({ value: eng.id, label: eng.full_name }))}
+          value={[...filterConsultants]}
+          onChange={next => setFilterConsultants(new Set(next))}
+        />
         <SearchableSelect
+          variant="ghost"
           value={filterPassion}
           onChange={setFilterPassion}
           options={passionOptions}
           placeholder="All Passion Areas"
-          style={{ minWidth: 170 }}
+          style={{ minWidth: 120 }}
         />
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setShowSowFilter(!showSowFilter)}
-            style={{
-              ...filterInputStyle,
-              cursor: 'pointer',
-              background: filterSow.size > 0 ? 'var(--brand-green-dark)' : 'var(--bg-card)',
-              color: filterSow.size > 0 ? '#fff' : 'var(--text-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-            }}
-          >
-            <span>{filterSow.size > 0 ? `SOW # (${filterSow.size})` : 'All SOWs'}</span>
-            <span style={{ fontSize: '0.5rem', marginLeft: 'auto' }}>{showSowFilter ? '\u25B2' : '\u25BC'}</span>
-          </button>
-          {showSowFilter && (
-            <>
-            <div onClick={() => { setShowSowFilter(false); setSowSearchText('') }} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />
-            <div style={{
-              position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 50,
-              background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 6, width: 240, maxHeight: 320, display: 'flex', flexDirection: 'column',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-            }}>
-              <div style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Search SOW #..."
-                  value={sowSearchText}
-                  onChange={e => setSowSearchText(e.target.value)}
-                  style={{ ...filterInputStyle, width: '100%', fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
-                />
-              </div>
-              <div style={{ overflowY: 'auto', flex: 1 }}>
-                {filterSow.size > 0 && (
-                  <div
-                    onClick={() => setFilterSow(new Set())}
-                    style={{
-                      padding: '0.4rem 0.75rem', fontSize: '0.7rem', color: 'var(--brand-green)',
-                      cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                    }}
-                  >
-                    Clear selection
-                  </div>
-                )}
-                {sowNumbers
-                  .filter(sow => !sowSearchText || sow.toLowerCase().includes(sowSearchText.toLowerCase()))
-                  .map(sow => (
-                  <label key={sow} style={{
-                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    padding: '0.35rem 0.75rem', fontSize: '0.8rem',
-                    color: filterSow.has(sow) ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={filterSow.has(sow)}
-                      onChange={() => setFilterSow(prev => {
-                        const next = new Set(prev)
-                        if (next.has(sow)) next.delete(sow)
-                        else next.add(sow)
-                        return next
-                      })}
-                      style={{ accentColor: 'var(--brand-green)', flexShrink: 0 }}
-                    />
-                    {sow}
-                  </label>
-                ))}
-              </div>
-            </div>
-            </>
-          )}
-        </div>
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setShowStatusFilter(!showStatusFilter)}
-            style={{
-              ...filterInputStyle,
-              cursor: 'pointer',
-              background: filterStatus.size > 0 ? 'var(--brand-green-dark)' : 'var(--bg-card)',
-              color: filterStatus.size > 0 ? '#fff' : 'var(--text-primary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-            }}
-          >
-            <span>{filterStatus.size > 0 ? `Status (${filterStatus.size})` : 'All Statuses'}</span>
-            <span style={{ fontSize: '0.5rem', marginLeft: 'auto' }}>{showStatusFilter ? '\u25B2' : '\u25BC'}</span>
-          </button>
-          {showStatusFilter && (
-            <>
-            <div onClick={() => setShowStatusFilter(false)} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />
-            <div style={{
-              position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 50,
-              background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 6, width: 220,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-            }}>
-              <div style={{ overflowY: 'auto' }}>
-                {filterStatus.size > 0 && (
-                  <div
-                    onClick={() => setFilterStatus(new Set())}
-                    style={{
-                      padding: '0.4rem 0.75rem', fontSize: '0.7rem', color: 'var(--brand-green)',
-                      cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                    }}
-                  >
-                    Clear selection
-                  </div>
-                )}
-                {([
-                  ['to_do', 'To Do'],
-                  ['soft_unconfirmed', 'Soft — Unconfirmed'],
-                  ['soft_at_risk', 'Soft — At Risk'],
-                  ['hard_scheduled', 'Hard Scheduled'],
-                  ['active', 'Active'],
-                  ['done', 'Done'],
-                ] as [string, string][]).map(([value, label]) => (
-                  <label key={value} style={{
-                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    padding: '0.35rem 0.75rem', fontSize: '0.8rem',
-                    color: filterStatus.has(value) ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={filterStatus.has(value)}
-                      onChange={() => setFilterStatus(prev => {
-                        const next = new Set(prev)
-                        if (next.has(value)) next.delete(value)
-                        else next.add(value)
-                        return next
-                      })}
-                      style={{ accentColor: 'var(--brand-green)', flexShrink: 0 }}
-                    />
-                    {label}
-                  </label>
-                ))}
-              </div>
-            </div>
-            </>
-          )}
-        </div>
-        <button
-          onClick={() => setShowSkillFilters(!showSkillFilters)}
-          style={{
-            ...navBtnStyle, fontSize: '0.75rem', padding: '0.3rem 0.6rem',
-            background: activeSkillFilters.length > 0 ? 'var(--brand-green-dark)' : 'var(--bg-card)',
-            color: activeSkillFilters.length > 0 ? '#fff' : 'var(--text-secondary)',
+        <MultiSelect
+          label="SOW #"
+          options={sowNumbers.map(sow => ({ value: sow, label: sow }))}
+          value={[...filterSow]}
+          onChange={next => setFilterSow(new Set(next))}
+        />
+        <MultiSelect
+          label="Status"
+          options={STATUS_FILTER_OPTIONS.map(opt => ({
+            value: opt.value,
+            label: opt.label,
+            color: STATUS_COLORS[opt.value as keyof typeof STATUS_COLORS],
+          }))}
+          value={[...filterStatus]}
+          onChange={next => setFilterStatus(new Set(next))}
+        />
+
+        <span style={toolbarDividerStyle} aria-hidden="true" />
+
+        <MultiSelect
+          label="Skills"
+          options={skillFilters.map(sf => ({ value: sf.skillId, label: sf.name }))}
+          value={skillFilters.filter(sf => sf.enabled).map(sf => sf.skillId)}
+          onChange={next => {
+            setSkillFilters(prev => prev.map(sf => {
+              const enabled = next.includes(sf.skillId)
+              if (enabled && !sf.enabled) return { ...sf, enabled: true, min: 1, max: 3 }
+              if (!enabled && sf.enabled) return { ...sf, enabled: false, min: 1, max: 3 }
+              return { ...sf, enabled }
+            }))
           }}
-        >
-          Skills {activeSkillFilters.length > 0 ? `(${activeSkillFilters.length})` : ''}
-        </button>
+          renderAccessory={(opt, selected) => {
+            if (!selected) return null
+            const sf = skillFilters.find(s => s.skillId === opt.value)
+            if (!sf) return null
+            return (
+              <SkillRange
+                min={sf.min}
+                max={sf.max}
+                onChange={(min, max) => {
+                  setSkillFilters(prev => prev.map(s => s.skillId === sf.skillId ? { ...s, min, max } : s))
+                }}
+              />
+            )
+          }}
+        />
         {hasActiveFilters && (
-          <button onClick={clearAllFilters} style={{ ...navBtnStyle, fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
+          <Button variant="ghost" size="sm" onClick={clearAllFilters} style={{ ...ghostFieldStyle, fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
             Clear Filters
-          </button>
+          </Button>
         )}
+        <span style={{ marginLeft: 'auto' }} aria-hidden="true" />
         <SavedViewBar page="resourcing" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} onClear={clearAllFilters} />
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: '1rem', flexShrink: 0, paddingLeft: 'var(--space-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
+        {LEGEND.map((item) => (
+          <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <div className={item.className} style={{ width: 10, height: 10, borderRadius: 3, border: '1px solid var(--bar-hairline)', flexShrink: 0 }} />
+            <span>{item.label}</span>
+          </div>
+        ))}
+        <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-display)', color: 'var(--text-muted)' }}>
           {viewMode === 'consultant'
             ? `${filteredConsultants.length} of ${consultants.length} consultants`
             : `${activeProjectGroups.length + doneProjectGroups.length} projects (${filteredConsultants.length} consultants)`
@@ -720,67 +556,35 @@ export function Resourcing() {
         </span>
       </div>
 
-      {/* Skill filter panel */}
-      {showSkillFilters && (
-        <div style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 6,
-          padding: '0.75rem 1rem', marginBottom: '0.75rem',
-          display: 'flex', flexWrap: 'wrap', gap: '0.75rem 1.5rem', flexShrink: 0,
-        }}>
-          {skillFilters.map(sf => (
-            <label key={sf.skillId} style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer',
-            }}>
-              <input type="checkbox" checked={sf.enabled} onChange={() => toggleSkillFilter(sf.skillId)}
-                style={{ accentColor: 'var(--brand-green)' }} />
-              <span>{sf.name}</span>
-              {sf.enabled && (
-                <>
-                  <input type="number" min={1} max={3} value={sf.min}
-                    onChange={e => updateSkillFilterRange(sf.skillId, 'min', parseInt(e.target.value) || 1)}
-                    style={skillRangeInputStyle} onClick={e => e.stopPropagation()} />
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>to</span>
-                  <input type="number" min={1} max={3} value={sf.max}
-                    onChange={e => updateSkillFilterRange(sf.skillId, 'max', parseInt(e.target.value) || 3)}
-                    style={skillRangeInputStyle} onClick={e => e.stopPropagation()} />
-                </>
-              )}
-            </label>
-          ))}
-        </div>
-      )}
+      <div ref={timelineRef} style={{ flex: 1, overflow: 'auto', overscrollBehaviorX: 'contain', border: '1px solid var(--border-soft)', borderRadius: 'var(--radius-lg)', userSelect: (dragging || resizingCol) ? 'none' : 'auto', minHeight: 0, contain: 'paint' }}>
+        <div style={{ minWidth: NAME_COL + VISIBLE_WEEKS * 50, position: 'relative' }}>
 
+          {/* One continuous today line. TimelineGrid still accepts todayPct but
+              we pass -1 so it does not paint a second marker on every row. */}
+          {todayPct >= 0 && todayPct <= 100 && (
+            <div style={{
+              position: 'absolute', top: 0, bottom: 0, width: 2,
+              left: `calc(${NAME_COL}px + (100% - ${NAME_COL}px) * ${todayPct / 100})`,
+              background: 'var(--brand-cyan)', opacity: 0.6, zIndex: 3,
+              pointerEvents: 'none',
+            }} />
+          )}
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', fontSize: '0.75rem', flexShrink: 0 }}>
-        {TYPE_LEGEND.map((item) => (
-          <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: item.background || item.color }} />
-            <span style={{ color: 'var(--text-muted)' }}>{item.label}</span>
-          </div>
-        ))}
-      </div>
-
-      <div ref={timelineRef} style={{ flex: 1, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 8, userSelect: (dragging || resizingCol) ? 'none' : 'auto', minHeight: 0 }}>
-        <div style={{ minWidth: NAME_COL + VISIBLE_WEEKS * 50 }}>
-
-          {/* Sticky header group: nav + month + week headers */}
-          <div style={{ position: 'sticky', top: 0, zIndex: 30 }}>
-            {/* Month headers */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ width: NAME_COL, minWidth: NAME_COL, flexShrink: 0, background: 'var(--bg-card)', padding: '0.25rem 0.5rem', position: 'sticky', left: 0, zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-                <button onClick={() => setWeekOffset(w => w - 4)} style={{ ...navBtnStyle, fontSize: '0.65rem', padding: '0.15rem 0.4rem' }}>&larr;</button>
-                <button onClick={() => setWeekOffset(0)} style={{ ...navBtnStyle, fontSize: '0.65rem', padding: '0.15rem 0.4rem' }}>Today</button>
-                <button onClick={() => setWeekOffset(w => w + 4)} style={{ ...navBtnStyle, fontSize: '0.65rem', padding: '0.15rem 0.4rem' }}>&rarr;</button>
+          {/* Sticky header sits above the per-row holiday overlay (z5). */}
+          <div style={{ position: 'sticky', top: 0, zIndex: 6, background: 'var(--bg-content)' }}>
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-soft)' }}>
+              <div style={{ width: NAME_COL, minWidth: NAME_COL, flexShrink: 0, background: 'var(--bg-content)', padding: '0.25rem 1rem', position: 'sticky', left: 0, zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '0.25rem' }}>
+                <Button variant="ghost" size="sm" icon={<ArrowLeftIcon />} aria-label="Previous weeks" onClick={() => setWeekOffset(w => w - 4)} />
+                <Button variant="secondary" size="sm" onClick={() => setWeekOffset(0)}>Today</Button>
+                <Button variant="ghost" size="sm" icon={<ArrowRightIcon />} aria-label="Next weeks" onClick={() => setWeekOffset(w => w + 4)} />
               </div>
               <div style={{ flex: 1, display: 'flex' }}>
                 {monthHeaders.map((mh, i) => (
                   <div key={i} style={{
                     flex: `0 0 ${(mh.span / VISIBLE_WEEKS) * 100}%`,
                     textAlign: 'center', padding: '0.5rem 0', fontSize: '0.75rem', fontWeight: 600,
-                    color: 'var(--text-primary)', background: 'var(--bg-card)',
-                    borderLeft: i > 0 ? '1px solid var(--border)' : 'none',
+                    color: 'var(--text-primary)', background: 'var(--bg-content)',
+                    borderLeft: i > 0 ? '1px solid var(--border-soft)' : 'none',
                     whiteSpace: 'nowrap', overflow: 'hidden',
                   }}>
                     {mh.label}
@@ -789,49 +593,33 @@ export function Resourcing() {
               </div>
             </div>
 
-            {/* Week headers */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ width: NAME_COL, minWidth: NAME_COL, flexShrink: 0, background: 'var(--bg-card)', padding: '0.4rem 1rem', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, position: 'sticky', left: 0, zIndex: 5, display: 'flex', alignItems: 'center' }}>
+            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-soft)' }}>
+              <div style={{ width: NAME_COL, minWidth: NAME_COL, flexShrink: 0, background: 'var(--bg-content)', padding: '0.4rem 1rem', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, position: 'sticky', left: 0, zIndex: 5, display: 'flex', alignItems: 'center' }}>
                 {viewMode === 'consultant' ? 'CONSULTANT' : 'PROJECT'}
-                <button
-                  onClick={() => {
-                    if (viewMode === 'consultant') {
-                      const allIds = filteredConsultants.map(e => e.id)
-                      const allCollapsed = allIds.every(id => collapsed.has(id))
-                      setCollapsed(allCollapsed ? new Set() : new Set(allIds))
-                    } else {
-                      const allIds = [...activeProjectGroups, ...doneProjectGroups].map(pg => pg.project.id)
-                      const allCollapsed = allIds.every(id => collapsed.has(id))
-                      setCollapsed(allCollapsed ? new Set() : new Set(allIds))
-                    }
-                  }}
-                  title={(() => {
-                    const allIds = viewMode === 'consultant'
-                      ? filteredConsultants.map(e => e.id)
-                      : [...activeProjectGroups, ...doneProjectGroups].map(pg => pg.project.id)
-                    return allIds.every(id => collapsed.has(id)) ? 'Expand all' : 'Collapse all'
-                  })()}
-                  style={{
-                    marginLeft: '0.5rem', background: 'transparent', border: '1px solid var(--border)',
-                    borderRadius: 3, color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.6rem',
-                    padding: '0.1rem 0.35rem', lineHeight: 1, display: 'flex', alignItems: 'center', gap: '0.2rem',
-                  }}
-                >
-                  {(() => {
-                    const allIds = viewMode === 'consultant'
-                      ? filteredConsultants.map(e => e.id)
-                      : [...activeProjectGroups, ...doneProjectGroups].map(pg => pg.project.id)
-                    return allIds.every(id => collapsed.has(id))
-                      ? <><span style={{ fontSize: '0.5rem' }}>{'\u25BC'}</span> Expand</>
-                      : <><span style={{ fontSize: '0.5rem' }}>{'\u25B6'}</span> Collapse</>
-                  })()}
-                </button>
+                {(() => {
+                  const allIds = viewMode === 'consultant'
+                    ? filteredConsultants.map(e => e.id)
+                    : [...activeProjectGroups, ...doneProjectGroups].map(pg => pg.project.id)
+                  const allCollapsed = allIds.every(id => collapsed.has(id))
+                  return (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={allCollapsed ? <ChevronDownIcon /> : <ChevronRightIcon />}
+                      onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(allIds))}
+                      title={allCollapsed ? 'Expand all' : 'Collapse all'}
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      {allCollapsed ? 'Expand All' : 'Collapse All'}
+                    </Button>
+                  )
+                })()}
                 <div
                   onMouseDown={handleColResizeStart}
                   style={{
                     position: 'absolute', right: 0, top: 0, bottom: 0, width: 5,
                     cursor: 'col-resize', zIndex: 10,
-                    background: resizingCol ? 'var(--brand-green)' : 'transparent',
+                    background: resizingCol ? 'var(--brand-cyan)' : 'transparent',
                   }}
                   onMouseEnter={e => { if (!resizingCol) e.currentTarget.style.background = 'var(--border)' }}
                   onMouseLeave={e => { if (!resizingCol) e.currentTarget.style.background = 'transparent' }}
@@ -843,8 +631,8 @@ export function Resourcing() {
                   return (
                     <div key={i} style={{
                       flex: `0 0 ${100 / VISIBLE_WEEKS}%`, textAlign: 'center', padding: '0.4rem 0',
-                      fontSize: '0.6rem', color: isThisWeek ? 'var(--brand-green)' : 'var(--text-muted)',
-                      fontWeight: isThisWeek ? 700 : 400, background: 'var(--bg-card)', borderLeft: '1px solid var(--border)',
+                      fontSize: '0.6rem', color: isThisWeek ? 'var(--brand-cyan)' : 'var(--text-muted)',
+                      fontWeight: isThisWeek ? 700 : 400, background: 'var(--bg-content)', borderLeft: '1px solid var(--border-soft)',
                       whiteSpace: 'nowrap', overflow: 'hidden',
                     }}>
                       {formatWeek(w)}
@@ -856,36 +644,17 @@ export function Resourcing() {
           </div>
 
           {/* Consultant rows */}
-          {viewMode === 'consultant' && filteredConsultants.map((eng, engIdx) => {
+          {viewMode === 'consultant' && filteredConsultants.map((eng) => {
             const isCollapsed = collapsed.has(eng.id)
             const isAddingHere = addingFor === eng.id
             const subRowHeight = 36
             const weeklyHours = calcWeeklyHours(eng.assignments, weeks, holidayMap, eng.country, eng.hire_date)
             const isTerminated = eng.offboarded_at != null
-            const isEvenRow = engIdx % 2 === 0
 
             return (
-              <div key={eng.id} style={{ borderBottom: '1px solid var(--border)', opacity: isTerminated ? 0.55 : 1, background: isEvenRow ? 'transparent' : 'rgba(255,255,255,0.02)', position: 'relative' }}>
-                {/* Holiday background — spans header row + expanded sub-rows */}
-                <div style={{
-                  position: 'absolute', left: NAME_COL, right: 0, top: 0, bottom: 0,
-                  pointerEvents: 'none', zIndex: 0, overflow: 'hidden',
-                }}>
-                  {weeks.map((w, i) => {
-                    const holDays = getHolidayDaysInWeek(holidayMap, eng.country, w)
-                    if (holDays.length === 0) return null
-                    const weekLeft = (i / VISIBLE_WEEKS) * 100
-                    const dayWidth = (1 / VISIBLE_WEEKS) * 100 / 5
-                    return holDays.map((hd) => (
-                      <div key={`hol-${i}-${hd.dayIndex}`} title={hd.name} style={{
-                        position: 'absolute',
-                        left: `${weekLeft + hd.dayIndex * dayWidth}%`,
-                        width: `${dayWidth}%`,
-                        top: 0, bottom: 0,
-                        background: HOLIDAY_BG,
-                      }} />
-                    ))
-                  })}
+              <div key={eng.id} style={{ borderBottom: '1px solid var(--border-soft)', opacity: isTerminated ? 0.55 : 1, background: 'transparent', position: 'relative' }}>
+                <div style={{ position: 'absolute', left: NAME_COL, right: 0, top: 0, bottom: 0, zIndex: 5, pointerEvents: 'none' }}>
+                  <HolidayOverlay weeks={weeks} visibleWeeks={VISIBLE_WEEKS} holidayMap={holidayMap} country={eng.country} />
                 </div>
 
                 {/* Consultant header row */}
@@ -893,24 +662,26 @@ export function Resourcing() {
                   <div style={{
                     width: NAME_COL, minWidth: NAME_COL, flexShrink: 0,
                     padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    borderRight: '1px solid var(--border)',
-                    background: isEvenRow ? 'var(--bg-card)' : 'color-mix(in srgb, var(--bg-card) 94%, var(--text-primary) 6%)',
-                    position: 'sticky', left: 0, zIndex: 4,
+                    borderRight: '1px solid var(--border-soft)',
+                    background: 'var(--bg-content)',
+                    position: 'sticky', left: 0, zIndex: 5,
                   }}>
                     <span onClick={() => toggleCollapse(eng.id)}
                       style={{ fontSize: '0.7rem', color: 'var(--text-muted)', width: 14, flexShrink: 0, cursor: 'pointer' }}>
                       {isCollapsed ? '\u25B6' : '\u25BC'}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: isTerminated ? 'var(--text-muted)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        {eng.full_name}
+                      <div style={{ fontSize: 'var(--text-md)', fontWeight: 500, color: isTerminated ? 'var(--text-muted)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <Link to={`/consultants/${eng.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                          {eng.full_name}
+                        </Link>
                         {isTerminated && (
                           <span style={{
                             fontSize: '0.55rem',
                             fontWeight: 600,
-                            color: '#d98f45',
-                            background: '#d98f4530',
-                            border: '1px solid #d98f4550',
+                            color: 'var(--color-critical)',
+                            background: 'var(--fill-critical)',
+                            border: '1px solid var(--color-critical)',
                             borderRadius: 3,
                             padding: '0.1rem 0.35rem',
                             textTransform: 'uppercase' as const,
@@ -920,28 +691,31 @@ export function Resourcing() {
                           </span>
                         )}
                       </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         <span>{eng.title || ''}</span>
                       </div>
                     </div>
                     {!isCollapsed && !readOnly && (
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={isAddingHere ? undefined : <PlusIcon />}
                         onClick={e => {
                           e.stopPropagation()
                           if (isAddingHere) { setAddingFor(null); setAssignForm(EMPTY_ASSIGN_FORM) }
                           else { setAddingFor(eng.id); setAssignForm(EMPTY_ASSIGN_FORM) }
                         }}
-                        style={{ ...navBtnStyle, fontSize: '0.65rem', padding: '0.2rem 0.4rem', flexShrink: 0, whiteSpace: 'nowrap' }}
+                        style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                         title="Assign to project"
                       >
-                        {isAddingHere ? 'Cancel' : '+ Assign'}
-                      </button>
+                        {isAddingHere ? 'Cancel' : 'Assign'}
+                      </Button>
                     )}
                   </div>
 
                   {/* Timeline area */}
                   <div style={{ flex: 1, position: 'relative' }}>
-                    <TimelineGrid weeks={weeks} visibleWeeks={VISIBLE_WEEKS} todayPct={todayPct} />
+                    <TimelineGrid weeks={weeks} visibleWeeks={VISIBLE_WEEKS} todayPct={-1} />
 
                     {/* Pre-hire background (greyed out) */}
                     {weeklyHours.map((hrs, i) => {
@@ -967,7 +741,7 @@ export function Resourcing() {
                           left: `${(i / VISIBLE_WEEKS) * 100}%`,
                           width: `${(1 / VISIBLE_WEEKS) * 100}%`,
                           top: 0, bottom: 0,
-                          background: 'rgba(217, 143, 69, 0.14)',
+                          background: 'var(--resourcing-overalloc)',
                           zIndex: 0,
                         }} />
                       )
@@ -987,14 +761,13 @@ export function Resourcing() {
                       const pType = a.projects?.project_type || 'billable'
                       const status = a.projects?.status || 'soft_unconfirmed'
                       return (
-                        <div key={a.id} style={{
+                        <div key={a.id} className={barClass(pType, status)} style={{
                           position: 'absolute',
                           left: `${Math.max(startPct, 0)}%`,
                           width: `${Math.min(widthPct, 100 - Math.max(startPct, 0))}%`,
-                          top: '12%', height: '76%', borderRadius: 4,
-                          background: getBarBackground(pType, status), opacity: 0.95, zIndex: 2,
-                          border: '1px solid rgba(255,255,255,0.15)',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                          top: '12%', height: '76%', borderRadius: 2,
+                          zIndex: 2,
+                          border: '1px solid var(--bar-hairline)',
                         }} />
                       )
                     })}
@@ -1042,43 +815,46 @@ export function Resourcing() {
                   // Helper to render a project sub-row (reused for both active and done)
                   function renderProjectRow(projectId: string, assignments: AssignmentWithDetails[]) {
                     const first = assignments[0]
+                    const clientName = first.projects?.client_name ?? 'Unknown Project'
+                    const projectName = first.projects?.project_name ?? ''
                     const projectLabel = first.projects
-                      ? `${first.projects.client_name} — ${first.projects.project_name}`
+                      ? `${clientName} — ${projectName}`
                       : 'Unknown Project'
                     const totalHours = assignments.reduce((sum, a) => sum + Number(a.total_hours), 0)
 
                     return (
-                      <div key={projectId} style={{ display: 'flex', minHeight: subRowHeight, borderTop: '1px solid var(--border-subtle)' }}>
+                      <div key={projectId} style={{ display: 'flex', minHeight: subRowHeight, borderTop: '1px solid var(--border-soft)' }}>
                         <div style={{
                           width: NAME_COL, minWidth: NAME_COL, flexShrink: 0,
                           padding: '0.25rem 0.75rem 0.25rem 2rem',
                           display: 'flex', alignItems: 'center', gap: '0.5rem',
-                          borderRight: '1px solid var(--border)',
-                          background: 'var(--bg-card-alt)', fontSize: '0.75rem',
-                          position: 'sticky', left: 0, zIndex: 4,
+                          borderRight: '1px solid var(--border-soft)',
+                          background: 'var(--bg-card)', fontSize: '0.75rem',
+                          position: 'sticky', left: 0, zIndex: 5,
                         }}>
-                          <span style={{
-                            display: 'flex', alignItems: 'center', gap: '0.4rem',
-                            overflow: 'hidden', flex: 1,
+                          <Link to={`/projects/${projectId}`} style={{
+                            flex: 1, minWidth: 0, overflow: 'hidden',
+                            textDecoration: 'none',
                           }} title={projectLabel}>
-                            <span style={{
-                              width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                              background: STATUS_DOT_COLORS[first.projects?.status || 'soft_unconfirmed'] || '#E63948',
-                            }} />
-                            <Link to={`/projects/${projectId}`} style={{
-                              color: 'var(--text-secondary)', overflow: 'hidden',
-                              textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                              textDecoration: 'none',
+                            <div style={{
+                              fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)',
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                             }}>
-                              {projectLabel}
-                            </Link>
-                          </span>
+                              {clientName}
+                            </div>
+                            <div style={{
+                              fontSize: '11.5px', color: 'var(--text-muted)',
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            }}>
+                              {projectName}
+                            </div>
+                          </Link>
                           <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem', flexShrink: 0 }}>
                             {totalHours}h
                           </span>
                         </div>
                         <div style={{ flex: 1, position: 'relative' }}>
-                          <TimelineGrid weeks={weeks} visibleWeeks={VISIBLE_WEEKS} todayPct={todayPct} opacity={0.2} />
+                          <TimelineGrid weeks={weeks} visibleWeeks={VISIBLE_WEEKS} todayPct={-1} opacity={0.2} />
                           {renderDragCreateZone(eng.id, projectId)}
                           {assignments.map(a => renderBar(a, 5, eng.country))}
                           {renderCreatePreview(`project-${eng.id}-${projectId}`)}
@@ -1094,7 +870,7 @@ export function Resourcing() {
                         <>
                           <div
                             style={{
-                              display: 'flex', minHeight: 28, borderTop: '1px solid var(--border-subtle)',
+                              display: 'flex', minHeight: 28, borderTop: '1px solid var(--border-soft)',
                               cursor: 'pointer', userSelect: 'none',
                             }}
                             onClick={() => toggleHidden(eng.id)}
@@ -1103,18 +879,19 @@ export function Resourcing() {
                               width: NAME_COL, minWidth: NAME_COL, flexShrink: 0,
                               padding: '0.2rem 0.75rem 0.2rem 2rem',
                               display: 'flex', alignItems: 'center', gap: '0.4rem',
-                              borderRight: '1px solid var(--border)',
-                              background: 'var(--bg-card)', fontSize: '0.7rem',
+                              borderRight: '1px solid var(--border-soft)',
+                              background: 'var(--bg-content)', fontSize: '0.7rem',
                               color: 'var(--text-muted)', fontStyle: 'italic',
-                              position: 'sticky', left: 0, zIndex: 4,
+                              position: 'sticky', left: 0, zIndex: 5,
                             }}>
                               <span style={{ fontSize: '0.55rem', width: 10 }}>
                                 {isHiddenOpen ? '\u25BC' : '\u25B6'}
                               </span>
-                              Hidden ({doneProjects.length})
+                              Hidden
+                              <span style={countPillStyle}>{doneProjects.length}</span>
                             </div>
                             <div style={{
-                              flex: 1, background: 'var(--bg-card)', opacity: 0.5,
+                              flex: 1, background: 'var(--bg-content)', opacity: 0.5,
                             }} />
                           </div>
                           {isHiddenOpen && doneProjects.map(([pid, assigns]) => renderProjectRow(pid, assigns))}
@@ -1129,39 +906,41 @@ export function Resourcing() {
                   // zIndex 50 keeps the SearchableSelect dropdown above other
                   // rows' bars (zIndex 2, or 10 when dragging) when it expands
                   // down into the next consultant row.
-                  <div style={{ display: 'flex', minHeight: subRowHeight, borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-card)', position: 'relative', zIndex: 50 }}>
+                  <div style={{ display: 'flex', minHeight: subRowHeight, borderTop: '1px solid var(--border-soft)', background: 'var(--bg-card)', position: 'relative', zIndex: 50 }}>
                     <div style={{
                       width: '100%', padding: '0.4rem 0.75rem 0.4rem 2rem',
-                      display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem',
+                      display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: '0.75rem',
                     }}>
                       <SearchableSelect
+                        variant="ghost"
                         value={assignForm.project_id}
                         onChange={val => setAssignForm({ ...assignForm, project_id: val })}
                         placeholder="Select Project..."
-                        style={{ flex: 2 }}
+                        style={{ width: 260 }}
                         options={projectOptions}
                       />
-                      <input type="date" value={assignForm.start_date}
-                        onChange={e => updateAssignDates('start_date', e.target.value)}
-                        style={{ ...inlineInputStyle, flex: 1 }} />
-                      <input type="date" value={assignForm.end_date}
-                        onChange={e => updateAssignDates('end_date', e.target.value)}
-                        style={{ ...inlineInputStyle, flex: 1 }} />
-                      <input type="number" placeholder="Hours" step="0.5" min="0.5"
+                      <div style={{ width: 150 }}>
+                        <DatePicker value={assignForm.start_date}
+                          onChange={v => updateAssignDates('start_date', v)}
+                          placeholder="Start date" ariaLabel="Start date" />
+                      </div>
+                      <div style={{ width: 150 }}>
+                        <DatePicker value={assignForm.end_date}
+                          onChange={v => updateAssignDates('end_date', v)}
+                          placeholder="End date" ariaLabel="End date" />
+                      </div>
+                      <input className="no-spinner" type="number" placeholder="Hours" step="0.5" min="0.5"
                         value={assignForm.total_hours}
                         onChange={e => setAssignForm({ ...assignForm, total_hours: e.target.value })}
                         style={{ ...inlineInputStyle, width: 70, flex: 0 }} />
-                      <button
+                      <Button
+                        variant="primary"
+                        size="sm"
                         onClick={() => handleInlineAssign(eng.id)}
                         disabled={savingAssign || !assignForm.project_id || !assignForm.start_date || !assignForm.end_date || !assignForm.total_hours}
-                        style={{
-                          ...navBtnStyle, fontSize: '0.7rem', padding: '0.25rem 0.5rem',
-                          background: 'var(--brand-green-dark)', color: '#fff', border: 'none',
-                          opacity: (savingAssign || !assignForm.project_id) ? 0.6 : 1,
-                        }}
                       >
                         {savingAssign ? '...' : 'Add'}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -1173,7 +952,7 @@ export function Resourcing() {
                     borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-card-alt)',
                     position: 'relative', zIndex: 1,
                   }}>
-                    No assignments — click "+ Assign" or click a week on the timeline
+                    No assignments — click "Assign" or click a week on the timeline
                   </div>
                 )}
               </div>
@@ -1184,31 +963,26 @@ export function Resourcing() {
           {viewMode === 'project' && (() => {
             const subRowHeight = 36
 
-            function renderProjectGroupRow(pg: ProjectWithConsultants, pgIdx: number) {
+            function renderProjectGroupRow(pg: ProjectWithConsultants) {
               const isCollapsed = collapsed.has(pg.project.id)
               const isAddingHere = addingForProject === pg.project.id
               const projectLabel = `${pg.project.client_name} — ${pg.project.project_name}`
-              const isEvenRow = pgIdx % 2 === 0
 
               return (
-                <div key={pg.project.id} style={{ borderBottom: '1px solid var(--border)', background: isEvenRow ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                <div key={pg.project.id} style={{ borderBottom: '1px solid var(--border-soft)', background: 'transparent' }}>
                   {/* Project header row */}
                   <div style={{ display: 'flex', minHeight: 44 }}>
                     <div style={{
                       width: NAME_COL, minWidth: NAME_COL, flexShrink: 0,
                       padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
-                      borderRight: '1px solid var(--border)',
-                      background: isEvenRow ? 'var(--bg-card)' : 'color-mix(in srgb, var(--bg-card) 94%, var(--text-primary) 6%)',
-                      position: 'sticky', left: 0, zIndex: 4,
+                      borderRight: '1px solid var(--border-soft)',
+                      background: 'var(--bg-content)',
+                      position: 'sticky', left: 0, zIndex: 5,
                     }}>
                       <span onClick={() => toggleCollapse(pg.project.id)}
                         style={{ fontSize: '0.7rem', color: 'var(--text-muted)', width: 14, flexShrink: 0, cursor: 'pointer' }}>
                         {isCollapsed ? '\u25B6' : '\u25BC'}
                       </span>
-                      <span style={{
-                        width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                        background: STATUS_DOT_COLORS[pg.project.status] || '#E63948',
-                      }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <Link to={`/projects/${pg.project.id}`} style={{
                           fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)',
@@ -1221,23 +995,26 @@ export function Resourcing() {
                         {pg.totalHours}h
                       </span>
                       {!isCollapsed && !readOnly && (
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={isAddingHere ? undefined : <PlusIcon />}
                           onClick={e => {
                             e.stopPropagation()
                             if (isAddingHere) { setAddingForProject(null); setAssignConsultantForm(EMPTY_CONSULTANT_ASSIGN_FORM) }
                             else { setAddingForProject(pg.project.id); setAssignConsultantForm(EMPTY_CONSULTANT_ASSIGN_FORM) }
                           }}
-                          style={{ ...navBtnStyle, fontSize: '0.65rem', padding: '0.2rem 0.4rem', flexShrink: 0, whiteSpace: 'nowrap' }}
+                          style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                           title="Assign consultant"
                         >
-                          {isAddingHere ? 'Cancel' : '+ Assign'}
-                        </button>
+                          {isAddingHere ? 'Cancel' : 'Assign'}
+                        </Button>
                       )}
                     </div>
 
                     {/* Timeline area */}
                     <div style={{ flex: 1, position: 'relative' }}>
-                      <TimelineGrid weeks={weeks} visibleWeeks={VISIBLE_WEEKS} todayPct={todayPct} />
+                      <TimelineGrid weeks={weeks} visibleWeeks={VISIBLE_WEEKS} todayPct={-1} />
 
                       {/* Collapsed: thin ticks for all assignments on this project */}
                       {isCollapsed && pg.consultantAssignments.flatMap(ea => ea.assignments).map((a) => {
@@ -1250,14 +1027,13 @@ export function Resourcing() {
                         const pType = a.projects?.project_type || 'billable'
                         const status = a.projects?.status || 'soft_unconfirmed'
                         return (
-                          <div key={a.id} style={{
+                          <div key={a.id} className={barClass(pType, status)} style={{
                             position: 'absolute',
                             left: `${Math.max(startPct, 0)}%`,
                             width: `${Math.min(widthPct, 100 - Math.max(startPct, 0))}%`,
-                            top: '12%', height: '76%', borderRadius: 4,
-                            background: getBarBackground(pType, status), opacity: 0.95, zIndex: 2,
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                            top: '12%', height: '76%', borderRadius: 2,
+                            zIndex: 2,
+                            border: '1px solid var(--bar-hairline)',
                           }} />
                         )
                       })}
@@ -1284,21 +1060,25 @@ export function Resourcing() {
                     const engTotalHours = assignments.reduce((sum, a) => sum + Number(a.total_hours), 0)
 
                     return (
-                      <div key={eng.id} style={{ display: 'flex', minHeight: subRowHeight, borderTop: '1px solid var(--border-subtle)' }}>
+                      <div key={eng.id} style={{ display: 'flex', minHeight: subRowHeight, borderTop: '1px solid var(--border-soft)' }}>
                         <div style={{
                           width: NAME_COL, minWidth: NAME_COL, flexShrink: 0,
                           padding: '0.25rem 0.75rem 0.25rem 2rem',
                           display: 'flex', alignItems: 'center', gap: '0.5rem',
-                          borderRight: '1px solid var(--border)',
-                          background: 'var(--bg-card-alt)', fontSize: '0.75rem',
-                          position: 'sticky', left: 0, zIndex: 4,
+                          borderRight: '1px solid var(--border-soft)',
+                          background: 'var(--bg-card)', fontSize: '0.75rem',
+                          position: 'sticky', left: 0, zIndex: 5,
                         }}>
                           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <Link to={`/consultants/${eng.id}`} style={{
+                              fontSize: 'var(--text-md)', fontWeight: 500, color: 'var(--text-primary)',
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                              textDecoration: 'none', display: 'block',
+                            }}>
                               {eng.full_name}
-                            </div>
+                            </Link>
                             {eng.title && (
-                              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {eng.title}
                               </div>
                             )}
@@ -1308,7 +1088,7 @@ export function Resourcing() {
                           </span>
                         </div>
                         <div style={{ flex: 1, position: 'relative' }}>
-                          <TimelineGrid weeks={weeks} visibleWeeks={VISIBLE_WEEKS} todayPct={todayPct} opacity={0.2} />
+                          <TimelineGrid weeks={weeks} visibleWeeks={VISIBLE_WEEKS} todayPct={-1} opacity={0.2} />
                           {renderDragCreateZone(eng.id, pg.project.id)}
                           {assignments.map(a => renderBar(a, 5, eng.country))}
                           {renderCreatePreview(`project-${eng.id}-${pg.project.id}`)}
@@ -1319,42 +1099,43 @@ export function Resourcing() {
 
                   {/* Inline assign consultant form */}
                   {!isCollapsed && isAddingHere && (
-                    <div style={{ display: 'flex', minHeight: subRowHeight, borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-card)' }}>
+                    <div style={{ display: 'flex', minHeight: subRowHeight, borderTop: '1px solid var(--border-soft)', background: 'var(--bg-card)' }}>
                       <div style={{
                         width: '100%', padding: '0.4rem 0.75rem 0.4rem 2rem',
-                        display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem',
+                        display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: '0.75rem',
                       }}>
                         <select
                           value={assignConsultantForm.consultant_id}
                           onChange={e => setAssignConsultantForm({ ...assignConsultantForm, consultant_id: e.target.value })}
-                          style={{ ...inlineInputStyle, flex: 2 }}
+                          style={{ ...inlineInputStyle, width: 260 }}
                         >
                           <option value="">Select Consultant...</option>
-                          {sortedConsultants.map(eng => (
-                            <option key={eng.id} value={eng.id}>{eng.full_name}</option>
+                          {sortedConsultants.map(c => (
+                            <option key={c.id} value={c.id}>{c.full_name}</option>
                           ))}
                         </select>
-                        <input type="date" value={assignConsultantForm.start_date}
-                          onChange={e => updateAssignConsultantDates('start_date', e.target.value)}
-                          style={{ ...inlineInputStyle, flex: 1 }} />
-                        <input type="date" value={assignConsultantForm.end_date}
-                          onChange={e => updateAssignConsultantDates('end_date', e.target.value)}
-                          style={{ ...inlineInputStyle, flex: 1 }} />
-                        <input type="number" placeholder="Hours" step="0.5" min="0.5"
+                        <div style={{ width: 150 }}>
+                          <DatePicker value={assignConsultantForm.start_date}
+                            onChange={v => updateAssignConsultantDates('start_date', v)}
+                            placeholder="Start date" ariaLabel="Start date" />
+                        </div>
+                        <div style={{ width: 150 }}>
+                          <DatePicker value={assignConsultantForm.end_date}
+                            onChange={v => updateAssignConsultantDates('end_date', v)}
+                            placeholder="End date" ariaLabel="End date" />
+                        </div>
+                        <input className="no-spinner" type="number" placeholder="Hours" step="0.5" min="0.5"
                           value={assignConsultantForm.total_hours}
                           onChange={e => setAssignConsultantForm({ ...assignConsultantForm, total_hours: e.target.value })}
                           style={{ ...inlineInputStyle, width: 70, flex: 0 }} />
-                        <button
+                        <Button
+                          variant="primary"
+                          size="sm"
                           onClick={() => handleInlineAssignForProject(pg.project.id)}
                           disabled={savingAssign || !assignConsultantForm.consultant_id || !assignConsultantForm.start_date || !assignConsultantForm.end_date || !assignConsultantForm.total_hours}
-                          style={{
-                            ...navBtnStyle, fontSize: '0.7rem', padding: '0.25rem 0.5rem',
-                            background: 'var(--brand-green-dark)', color: '#fff', border: 'none',
-                            opacity: (savingAssign || !assignConsultantForm.consultant_id) ? 0.6 : 1,
-                          }}
                         >
                           {savingAssign ? '...' : 'Add'}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -1365,7 +1146,7 @@ export function Resourcing() {
                       padding: '0.5rem 2rem', fontSize: '0.7rem', color: 'var(--text-muted)',
                       borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-card-alt)',
                     }}>
-                      No consultants assigned — click "+ Assign" or drag on the timeline
+                      No consultants assigned — click "Assign" or drag on the timeline
                     </div>
                   )}
                 </div>
@@ -1374,12 +1155,12 @@ export function Resourcing() {
 
             return (
               <>
-                {activeProjectGroups.map((pg, i) => renderProjectGroupRow(pg, i))}
+                {activeProjectGroups.map((pg) => renderProjectGroupRow(pg))}
                 {doneProjectGroups.length > 0 && (
                   <>
                     <div
                       style={{
-                        display: 'flex', minHeight: 28, borderBottom: '1px solid var(--border)',
+                        display: 'flex', minHeight: 28, borderBottom: '1px solid var(--border-soft)',
                         cursor: 'pointer', userSelect: 'none',
                       }}
                       onClick={() => setHiddenProjectsOpen(p => !p)}
@@ -1388,21 +1169,22 @@ export function Resourcing() {
                         width: NAME_COL, minWidth: NAME_COL, flexShrink: 0,
                         padding: '0.2rem 0.75rem 0.2rem 1rem',
                         display: 'flex', alignItems: 'center', gap: '0.4rem',
-                        borderRight: '1px solid var(--border)',
-                        background: 'var(--bg-card)', fontSize: '0.7rem',
+                        borderRight: '1px solid var(--border-soft)',
+                        background: 'var(--bg-content)', fontSize: '0.7rem',
                         color: 'var(--text-muted)', fontStyle: 'italic',
-                        position: 'sticky', left: 0, zIndex: 4,
+                        position: 'sticky', left: 0, zIndex: 5,
                       }}>
                         <span style={{ fontSize: '0.55rem', width: 10 }}>
                           {hiddenProjectsOpen ? '\u25BC' : '\u25B6'}
                         </span>
-                        Hidden ({doneProjectGroups.length})
+                        Hidden
+                        <span style={countPillStyle}>{doneProjectGroups.length}</span>
                       </div>
                       <div style={{
-                        flex: 1, background: 'var(--bg-card)', opacity: 0.5,
+                        flex: 1, background: 'var(--bg-content)', opacity: 0.5,
                       }} />
                     </div>
-                    {hiddenProjectsOpen && doneProjectGroups.map((pg, i) => renderProjectGroupRow(pg, activeProjectGroups.length + i))}
+                    {hiddenProjectsOpen && doneProjectGroups.map((pg) => renderProjectGroupRow(pg))}
                   </>
                 )}
               </>
@@ -1487,37 +1269,18 @@ export function Resourcing() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               {!readOnly && (
-                <button
-                  onClick={handleDeleteAssignment}
-                  disabled={savingEdit}
-                  style={{
-                    background: 'transparent', border: '1px solid var(--fill-critical)',
-                    color: 'var(--color-critical)', padding: '0.4rem 0.75rem',
-                    fontSize: '0.8rem', borderRadius: 4, cursor: 'pointer',
-                  }}
-                >
+                <Button variant="danger" size="sm" onClick={handleDeleteAssignment} disabled={savingEdit}>
                   Delete
-                </button>
+                </Button>
               )}
               <div style={{ display: 'flex', gap: '0.5rem', marginLeft: readOnly ? 'auto' : undefined }}>
-                <button
-                  onClick={() => setEditingAssignment(null)}
-                  style={{ ...navBtnStyle, padding: '0.4rem 0.75rem' }}
-                >
+                <Button variant="ghost" size="sm" onClick={() => setEditingAssignment(null)}>
                   {readOnly ? 'Close' : 'Cancel'}
-                </button>
+                </Button>
                 {!readOnly && (
-                  <button
-                    onClick={handleSaveEdit}
-                    disabled={savingEdit}
-                    style={{
-                      background: 'var(--brand-green-dark)', color: '#fff',
-                      border: 'none', padding: '0.4rem 0.75rem', fontSize: '0.8rem',
-                      borderRadius: 4, cursor: 'pointer', opacity: savingEdit ? 0.6 : 1,
-                    }}
-                  >
+                  <Button variant="primary" size="sm" onClick={handleSaveEdit} disabled={savingEdit}>
                     {savingEdit ? 'Saving...' : 'Save'}
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>

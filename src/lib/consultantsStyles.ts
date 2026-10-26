@@ -3,7 +3,7 @@ import type React from 'react'
 export const RATING_COLORS: Record<number, string> = {
   1: '#7CB342',
   2: '#FFA726',
-  3: '#11C3DB',
+  3: '#D6B25E',
 }
 
 export const labelStyle: React.CSSProperties = {

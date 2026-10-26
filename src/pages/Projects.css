@@ -1,0 +1,216 @@
+/* ═══════════ Projects page — Vercel/Geist refresh ═══════════
+   Compact zebra table + Resourcing-parity controls. All rules are scoped under
+   .projects-page so the global table/th/td styles (index.css) are overridden
+   only here. Colors are tokens only; the zebra tint reuses --card-inset. */
+
+/* Full-height flex page (same pattern as Resourcing): the header + filters are
+   fixed, and the table area below scrolls INTERNALLY. This pins the table's
+   horizontal scrollbar at the viewport bottom (always reachable) instead of
+   leaving it at the bottom of all the rows where window-scroll buried it. */
+.projects-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 4rem);
+}
+
+.projects-page__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+  flex-shrink: 0;
+}
+
+/* Header actions (Export CSV / New Project) share the Resourcing view-tab
+   rail: ghost <Button className="view-tab"> on a bottom hairline. The
+   .view-tab visuals live in index.css; this is just the rail. */
+.projects-toolbar-tabs {
+  display: inline-flex;
+  gap: var(--space-5);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* Filter bar — mirrors Resourcing: a leading kanban-ghost Search input, a
+   toolbar divider, then the MultiSelect dropdowns. */
+.projects-filters {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: var(--space-4);
+  flex-shrink: 0;
+}
+.projects-search {
+  width: 220px;
+  padding: 0.4rem 0.7rem;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+}
+.projects-toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-soft);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* ───────── Table ─────────
+   The wrapper scrolls horizontally so the wide multi-column table stays fully
+   reachable when the window is narrow or zoomed in, instead of overflowing
+   past the body's overflow-x:hidden clip. A scroll container has min-content 0
+   on the scroll axis, so it shrinks with the flex layout rather than forcing
+   the page wide. */
+.projects-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.projects-page table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.projects-page thead th {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  white-space: nowrap;
+  background: var(--bg-content);
+  border-bottom: 1px solid var(--border-soft);
+  cursor: pointer;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.projects-page thead th:hover {
+  color: var(--text-secondary);
+}
+.projects-page th.num,
+.projects-page td.num {
+  text-align: right;
+}
+
+.projects-page tbody td {
+  padding: 0 var(--space-3);
+  height: 38px;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.projects-page tbody tr {
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.projects-page tbody tr:nth-child(2n) td {
+  background: var(--card-inset);
+}
+.projects-page tbody tr:hover td {
+  background: var(--bg-card);
+}
+
+.projects-uid {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.projects-num {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+.projects-date {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.projects-muted {
+  color: var(--text-muted);
+}
+.projects-client {
+  color: var(--text-primary);
+}
+.projects-link {
+  color: var(--text-primary);
+  font-weight: 500;
+  text-decoration: none;
+}
+.projects-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.projects-type {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.projects-type__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+/* Row actions. On hover-capable (pointer) devices they fade in on hover/focus
+   so resting rows stay calm; on touch devices (no hover) they stay visible so
+   Edit/Delete are always reachable. */
+.projects-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .projects-actions {
+    opacity: 0;
+  }
+  .projects-page tbody tr:hover .projects-actions,
+  .projects-actions:focus-within {
+    opacity: 1;
+  }
+}
+.projects-page .projects-act-danger:hover:not(:disabled) {
+  color: var(--brand-red);
+  background: var(--accent-red-glow);
+  border-color: var(--accent-red-glow);
+}
+
+/* Archive pages reuse this shell. A descriptive blurb sits between the head
+   rail and the filter bar; the per-row Restore action tints the brand accent
+   on hover (the positive-action counterpart to .projects-act-danger). */
+.projects-page .projects-blurb {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  max-width: 820px;
+  margin: 0 0 var(--space-4);
+  flex-shrink: 0;
+}
+.projects-page .projects-act-restore:hover:not(:disabled) {
+  color: var(--brand-cyan);
+  background: var(--accent-cyan-glow);
+  border-color: var(--accent-cyan-glow);
+}
+/* Filter-empty state row (archive data exists but filters matched nothing). */
+.projects-page tbody td.projects-empty-row {
+  text-align: center;
+  color: var(--text-muted);
+  height: 96px;
+}
+
+/* Inline form error block (inside the New/Edit dialog). */
+.projects-form-error {
+  grid-column: 1 / -1;
+  color: var(--brand-red);
+  background: var(--accent-red-glow);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+}

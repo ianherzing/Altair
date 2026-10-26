@@ -1,6 +1,6 @@
 # Altair Frontend Design System
 
-**Status:** Foundations + primitives landed; page-by-page rollout in progress.
+**Status:** Shell and pages follow the October 2026 upstream layout (accordion sidebar, command palette, Geist type). Altair's deep-forest palette stays the brand.
 
 ## Goal
 
@@ -32,13 +32,11 @@ Inspiration:
 
 ### Type stack
 
-Body text stays on **Inter** until pages are redesigned. Primitives and redesigned
-pages use **Geist Sans** (`@fontsource-variable/geist`, self-hosted — no CDN
-dependency) and **Geist Mono** wherever numbers, dates, or hours appear.
+Body text, headings, and primitives use **Geist Sans** (`@fontsource-variable/geist`, self-hosted) and **Geist Mono** for numbers, dates, and hours.
 
 ```
---font-sans:    'Inter', 'Geist Variable', system-ui, -apple-system, sans-serif
---font-display: 'Geist Variable', 'Inter', system-ui, sans-serif
+--font-sans:    'Geist Variable', system-ui, -apple-system, sans-serif
+--font-display: 'Geist Variable', system-ui, sans-serif
 --font-mono:    'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace
 ```
 

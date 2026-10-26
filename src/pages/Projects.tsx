@@ -2,10 +2,31 @@ import { Link } from 'react-router-dom'
 import { downloadCsv } from '../lib/csv'
 import { LoadingState } from '../components/LoadingState'
 import { StatusBadge } from '../components/StatusBadge'
+import { Dialog } from '../components/ui/Dialog'
+import { PageTitle, MultiSelect, Button } from '../components/ui'
 import { useProjectsData } from '../hooks/useProjectsData'
-import { TYPE_LABELS, TYPE_COLORS, STATUS_LABELS, STATUS_OPTIONS, EMPTY_PROJECT_FORM } from '../types/projects'
-import { labelStyle, inputStyle, filterBtnStyle, dropdownStyle, clearStyle, checkLabelStyle } from '../lib/projectsStyles'
+import { TYPE_LABELS, TYPE_COLORS, STATUS_LABELS, STATUS_OPTIONS, STATUS_COLORS, EMPTY_PROJECT_FORM } from '../types/projects'
+import { labelStyle, inputStyle } from '../lib/projectsStyles'
 import type { ProjectType, RevenueStatus } from '../types/database'
+import './Projects.css'
+
+/** Download glyph for the Export action (Geist stroke style, currentColor). */
+function DownloadIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 2v8M5 7l3 3 3-3" /><path d="M3 12.5h10" />
+    </svg>
+  )
+}
+
+/** Plus glyph for the New Project action. */
+function PlusIcon() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true">
+      <path d="M8 3.5v9M3.5 8h9" />
+    </svg>
+  )
+}
 
 export function Projects() {
   const {
@@ -17,19 +38,11 @@ export function Projects() {
     saving,
     formError, setFormError,
     filterClients, setFilterClients,
-    showClientFilter, setShowClientFilter,
-    clientFilterRef,
     filterProject, setFilterProject,
     filterTypes, setFilterTypes,
-    showTypeFilter, setShowTypeFilter,
-    typeFilterRef,
     filterSow, setFilterSow,
     filterStatuses, setFilterStatuses,
-    showStatusFilter, setShowStatusFilter,
-    statusFilterRef,
     filterPMs, setFilterPMs,
-    showPMFilter, setShowPMFilter,
-    pmFilterRef,
     sortCol, sortDir, toggleSort,
     allClients, allTypes, allPMs,
     filteredProjects, sortedProjects,
@@ -40,11 +53,19 @@ export function Projects() {
   if (loading || error) return <LoadingState loading={loading} error={error} retry={retry} message="Loading projects..." />
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2>Projects ({filteredProjects.length}{filteredProjects.length !== projects.length ? ` of ${projects.length}` : ''})</h2>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <button
+    <div className="projects-page">
+      <div className="projects-page__head">
+        <PageTitle
+          title="Projects"
+          meta={`(${filteredProjects.length}${filteredProjects.length !== projects.length ? ` of ${projects.length}` : ''})`}
+          style={{ margin: 0 }}
+        />
+        <div className="projects-toolbar-tabs">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="view-tab"
+            icon={<DownloadIcon />}
             onClick={() => {
               const rows = filteredProjects.map(p => ({
                 UID: p.altair_uid,
@@ -61,159 +82,77 @@ export function Projects() {
               }))
               downloadCsv(rows, `altair-projects-${new Date().toISOString().slice(0, 10)}.csv`)
             }}
-            style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}
           >
             Export CSV
-          </button>
+          </Button>
           {!readOnly && (
-            <button onClick={() => { setForm(EMPTY_PROJECT_FORM); setEditingId(null); setFormError(null); setShowForm(!showForm) }}>
-              {showForm ? 'Cancel' : '+ New Project'}
-            </button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="view-tab"
+              icon={<PlusIcon />}
+              onClick={() => { setForm(EMPTY_PROJECT_FORM); setEditingId(null); setFormError(null); setShowForm(!showForm) }}
+            >
+              {showForm ? 'Cancel' : 'New Project'}
+            </Button>
           )}
         </div>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        {/* Client multi-select */}
-        <div ref={clientFilterRef} style={{ position: 'relative' }}>
-          <button type="button" onClick={() => setShowClientFilter(o => !o)} style={{ ...filterBtnStyle, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span>{filterClients.length === 0 ? 'All Clients' : `${filterClients.length} client${filterClients.length > 1 ? 's' : ''}`}</span>
-            <span style={{ fontSize: '0.5rem' }}>{showClientFilter ? '\u25B2' : '\u25BC'}</span>
-          </button>
-          {showClientFilter && (
-            <div style={dropdownStyle}>
-              {filterClients.length > 0 && (
-                <div onClick={() => setFilterClients([])} style={clearStyle}>Clear all</div>
-              )}
-              {allClients.map(c => {
-                const checked = filterClients.includes(c)
-                return (
-                  <label key={c} style={checkLabelStyle}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-input)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <input type="checkbox" checked={checked}
-                      onChange={() => setFilterClients(prev => checked ? prev.filter(v => v !== c) : [...prev, c])}
-                      style={{ accentColor: 'var(--brand-green)' }} />
-                    {c}
-                  </label>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Project name type-in */}
+      {/* Filters — leading search, divider, ghost dropdowns. SOW stays a text
+          field because the projects hook filters it as a string, not a set. */}
+      <div className="projects-filters">
         <input
+          className="kanban-ghost projects-search"
           value={filterProject}
           onChange={e => setFilterProject(e.target.value)}
-          placeholder="Filter project..."
-          style={{ ...filterBtnStyle, width: 140 }}
+          placeholder="Filter project…"
+          aria-label="Filter by project name"
         />
 
-        {/* Type multi-select */}
-        <div ref={typeFilterRef} style={{ position: 'relative' }}>
-          <button type="button" onClick={() => setShowTypeFilter(o => !o)} style={{ ...filterBtnStyle, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span>{filterTypes.length === 0 ? 'All Types' : `${filterTypes.length} type${filterTypes.length > 1 ? 's' : ''}`}</span>
-            <span style={{ fontSize: '0.5rem' }}>{showTypeFilter ? '\u25B2' : '\u25BC'}</span>
-          </button>
-          {showTypeFilter && (
-            <div style={dropdownStyle}>
-              {filterTypes.length > 0 && (
-                <div onClick={() => setFilterTypes([])} style={clearStyle}>Clear all</div>
-              )}
-              {allTypes.map(t => {
-                const checked = filterTypes.includes(t)
-                return (
-                  <label key={t} style={checkLabelStyle}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-input)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <input type="checkbox" checked={checked}
-                      onChange={() => setFilterTypes(prev => checked ? prev.filter(v => v !== t) : [...prev, t])}
-                      style={{ accentColor: 'var(--brand-green)' }} />
-                    <span style={{ color: TYPE_COLORS[t] }}>{TYPE_LABELS[t]}</span>
-                  </label>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        <span className="projects-toolbar-divider" aria-hidden="true" />
 
-        {/* SOW # type-in */}
+        <MultiSelect
+          label="All Clients"
+          options={allClients.map(c => ({ value: c, label: c }))}
+          value={filterClients}
+          onChange={setFilterClients}
+        />
+        <MultiSelect
+          label="Types"
+          options={allTypes.map(t => ({ value: t, label: TYPE_LABELS[t], color: TYPE_COLORS[t] }))}
+          value={filterTypes}
+          onChange={setFilterTypes}
+        />
+        <MultiSelect
+          label="All PMs"
+          options={allPMs.map(pm => ({ value: pm, label: pm }))}
+          value={filterPMs}
+          onChange={setFilterPMs}
+        />
         <input
+          className="kanban-ghost projects-search"
           value={filterSow}
           onChange={e => setFilterSow(e.target.value)}
-          placeholder="Filter SOW #..."
-          style={{ ...filterBtnStyle, width: 130 }}
+          placeholder="SOW #"
+          aria-label="Filter by SOW number"
+          style={{ width: 140 }}
         />
-
-        {/* Status multi-select */}
-        <div ref={statusFilterRef} style={{ position: 'relative' }}>
-          <button type="button" onClick={() => setShowStatusFilter(o => !o)} style={{ ...filterBtnStyle, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span>{filterStatuses.length === 0 ? 'All Statuses' : `${filterStatuses.length} status${filterStatuses.length > 1 ? 'es' : ''}`}</span>
-            <span style={{ fontSize: '0.5rem' }}>{showStatusFilter ? '\u25B2' : '\u25BC'}</span>
-          </button>
-          {showStatusFilter && (
-            <div style={dropdownStyle}>
-              {filterStatuses.length > 0 && (
-                <div onClick={() => setFilterStatuses([])} style={clearStyle}>Clear all</div>
-              )}
-              {STATUS_OPTIONS.map(s => {
-                const checked = filterStatuses.includes(s)
-                return (
-                  <label key={s} style={checkLabelStyle}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-input)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <input type="checkbox" checked={checked}
-                      onChange={() => setFilterStatuses(prev => checked ? prev.filter(v => v !== s) : [...prev, s])}
-                      style={{ accentColor: 'var(--brand-green)' }} />
-                    {STATUS_LABELS[s]}
-                  </label>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Project Manager multi-select */}
-        <div ref={pmFilterRef} style={{ position: 'relative' }}>
-          <button type="button" onClick={() => setShowPMFilter(o => !o)} style={{ ...filterBtnStyle, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span>{filterPMs.length === 0 ? 'All PMs' : `${filterPMs.length} PM${filterPMs.length > 1 ? 's' : ''}`}</span>
-            <span style={{ fontSize: '0.5rem' }}>{showPMFilter ? '\u25B2' : '\u25BC'}</span>
-          </button>
-          {showPMFilter && (
-            <div style={dropdownStyle}>
-              {filterPMs.length > 0 && (
-                <div onClick={() => setFilterPMs([])} style={clearStyle}>Clear all</div>
-              )}
-              {allPMs.map(pm => {
-                const checked = filterPMs.includes(pm)
-                return (
-                  <label key={pm} style={checkLabelStyle}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-input)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <input type="checkbox" checked={checked}
-                      onChange={() => setFilterPMs(prev => checked ? prev.filter(v => v !== pm) : [...prev, pm])}
-                      style={{ accentColor: 'var(--brand-green)' }} />
-                    {pm}
-                  </label>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        <MultiSelect
+          label="Status"
+          options={STATUS_OPTIONS.map(s => ({ value: s, label: STATUS_LABELS[s], color: STATUS_COLORS[s] }))}
+          value={filterStatuses}
+          onChange={setFilterStatuses}
+        />
       </div>
 
-      {showForm && (
+      <Dialog
+        open={showForm}
+        onOpenChange={setShowForm}
+        title={editingId ? 'Edit Project' : 'New Project'}
+        width={680}
+      >
         <form onSubmit={handleSubmit} style={{
-          background: 'var(--bg-card)',
-          padding: '1.5rem',
-          borderRadius: '8px',
-          marginBottom: '1.5rem',
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
           gap: '1rem',
@@ -266,42 +205,46 @@ export function Projects() {
             </select>
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-            <button type="submit" disabled={saving} style={{ width: '100%' }}>
-              {saving ? 'Saving...' : editingId ? 'Update Project' : 'Create Project'}
-            </button>
+            <Button type="submit" variant="primary" loading={saving} style={{ width: '100%' }}>
+              {saving ? 'Saving…' : editingId ? 'Update Project' : 'Create Project'}
+            </Button>
           </div>
           {formError && (
-            <div style={{ gridColumn: '1 / -1', color: '#ff6b6b', background: 'rgba(255,107,107,0.1)', padding: '0.75rem', borderRadius: '6px', fontSize: '0.9rem' }}>
+            <div className="projects-form-error">
               {formError}
             </div>
           )}
         </form>
-      )}
+      </Dialog>
 
-      {filteredProjects.length === 0 && !showForm ? (
+      {projects.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>
-          No projects yet. Click "+ New Project" to add one, or wire an EngagementSource adapter to ingest them automatically.
+          No projects yet. Click "New Project" to add one, or wire an EngagementSource adapter to ingest them automatically.
+        </p>
+      ) : filteredProjects.length === 0 ? (
+        <p style={{ color: 'var(--text-muted)' }}>
+          No projects match your filters.
         </p>
       ) : (
+        <div className="projects-table-wrap">
         <table>
           <thead>
             <tr>
-              {[
+              {([
                 { key: 'uid', label: 'UID' },
                 { key: 'client', label: 'Client' },
                 { key: 'project', label: 'Project' },
                 { key: 'type', label: 'Type' },
                 { key: 'sow', label: 'SOW #' },
-                { key: 'amount', label: 'SOW Amount' },
-                { key: 'hours', label: 'Hours' },
+                { key: 'amount', label: 'SOW Amount', num: true },
+                { key: 'hours', label: 'Hours', num: true },
                 { key: 'status', label: 'Status' },
                 { key: 'pm', label: 'PM' },
                 { key: 'start', label: 'Start' },
                 { key: 'end', label: 'End' },
-              ].map(col => (
-                <th key={col.key} onClick={() => toggleSort(col.key)}
-                  style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
-                  {col.label} {sortCol === col.key ? (sortDir === 'asc' ? '\u25B2' : '\u25BC') : ''}
+              ] as { key: string; label: string; num?: boolean }[]).map(col => (
+                <th key={col.key} className={col.num ? 'num' : undefined} onClick={() => toggleSort(col.key)}>
+                  {col.label} {sortCol === col.key ? (sortDir === 'asc' ? '▲' : '▼') : ''}
                 </th>
               ))}
               <th></th>
@@ -310,21 +253,22 @@ export function Projects() {
           <tbody>
             {sortedProjects.map((p) => (
               <tr key={p.id}>
-                <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{p.altair_uid}</td>
-                <td>{p.client_name}</td>
+                <td className="projects-uid">{p.altair_uid}</td>
+                <td className="projects-client">{p.client_name}</td>
                 <td>
-                  <Link to={`/projects/${p.id}`} style={{ color: 'var(--brand-green)', textDecoration: 'none' }}>
+                  <Link to={`/projects/${p.id}`} className="projects-link">
                     {p.project_name}
                   </Link>
                 </td>
                 <td>
-                  <span style={{ color: TYPE_COLORS[p.project_type || 'billable'], fontWeight: 500, fontSize: '0.8rem' }}>
+                  <span className="projects-type">
+                    <span className="projects-type__dot" style={{ background: TYPE_COLORS[p.project_type || 'billable'] }} />
                     {TYPE_LABELS[p.project_type || 'billable']}
                   </span>
                 </td>
-                <td>{p.sow_number || '\u2014'}</td>
-                <td>{p.sow_amount ? '$' + Number(p.sow_amount).toLocaleString() : '\u2014'}</td>
-                <td>{p.planned_hours || '\u2014'}</td>
+                <td className={p.sow_number ? undefined : 'projects-muted'}>{p.sow_number || '—'}</td>
+                <td className="num">{p.sow_amount ? <span className="projects-num">{'$' + Number(p.sow_amount).toLocaleString()}</span> : <span className="projects-muted">{'—'}</span>}</td>
+                <td className="num">{p.planned_hours ? <span className="projects-num">{p.planned_hours}</span> : <span className="projects-muted">{'—'}</span>}</td>
                 <td>
                   {readOnly ? (
                     <StatusBadge status={p.status} />
@@ -332,32 +276,14 @@ export function Projects() {
                     <StatusBadge status={p.status} onStatusChange={(s) => updateStatus(p.id, s)} />
                   )}
                 </td>
-                <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{p.project_manager || '\u2014'}</td>
-                <td>{p.engagement_start || '\u2014'}</td>
-                <td>{p.engagement_end || '\u2014'}</td>
-                <td style={{ whiteSpace: 'nowrap' }}>
+                <td className={p.project_manager ? undefined : 'projects-muted'}>{p.project_manager || '—'}</td>
+                <td className="projects-date">{p.engagement_start || '—'}</td>
+                <td className="projects-date">{p.engagement_end || '—'}</td>
+                <td>
                   {!readOnly && (
-                    <span style={{ display: 'inline-flex', gap: '0.35rem' }}>
-                      <button onClick={() => startEdit(p)} style={{
-                        background: 'transparent',
-                        border: '1px solid #333',
-                        color: 'var(--text-muted)',
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.75rem',
-                        cursor: 'pointer',
-                      }}>
-                        Edit
-                      </button>
-                      <button onClick={() => handleDelete(p.id, p.client_name, p.project_name)} style={{
-                        background: 'transparent',
-                        border: '1px solid #e63948',
-                        color: '#e63948',
-                        padding: '0.25rem 0.5rem',
-                        fontSize: '0.75rem',
-                        cursor: 'pointer',
-                      }}>
-                        Delete
-                      </button>
+                    <span className="projects-actions">
+                      <Button variant="ghost" size="sm" onClick={() => startEdit(p)}>Edit</Button>
+                      <Button variant="ghost" size="sm" className="projects-act-danger" onClick={() => handleDelete(p.id, p.client_name, p.project_name)}>Delete</Button>
                     </span>
                   )}
                 </td>
@@ -365,6 +291,7 @@ export function Projects() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   )

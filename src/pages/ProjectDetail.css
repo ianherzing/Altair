@@ -1,0 +1,486 @@
+/* ═══════════ Project Detail — Vercel/Geist dossier ═══════════
+   Two-column dossier: a main column (Gantt → Assignments → Notes) and a
+   sticky right rail (one flat hairline-separated card: Financials, Engagement,
+   Key Dates, Scheduling). All rules scoped under .pd; colors are tokens only.
+   The Gantt itself is styled inline in the tsx to mirror Resourcing.
+   .pdsk-* is the loading skeleton. Class names kept from the Geist layout
+   even where a rail section is not rendered. */
+
+.pd-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  text-decoration: none;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+.pd-back:hover { color: var(--text-secondary); }
+
+.pd-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+}
+.pd-uidchip {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 3px var(--space-2);
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  user-select: all;
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.pd-uidchip:hover { border-color: var(--border); color: var(--text-primary); }
+.pd-dates {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: var(--space-2) 0 0;
+}
+.pd-dates .arr { opacity: 0.5; margin: 0 var(--space-1); }
+
+/* Make the ProjectDetail root a container-query context so the dossier grid
+   below collapses based on ITS OWN width, not the viewport. ProjectDetail is
+   reused inside the fixed-width (700px) Kanban side drawer, where the viewport
+   stays wide but the available width is narrow — a viewport media query never
+   fired there, cramming the two-column dossier into the drawer. */
+.pd { container-type: inline-size; }
+
+/* ───────── Dossier grid ───────── */
+/* Own the breathing room below the header here (not on .pd-dates) so the gap is
+   consistent whether or not the project has engagement dates — without dates the
+   .pd-dates element isn't rendered and the title used to butt against the card. */
+.pd-dossier {
+  display: grid;
+  grid-template-columns: 332px minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+  margin-top: var(--space-5);
+}
+.pd-main { min-width: 0; order: 2; }
+.pd-rail {
+  position: sticky;
+  top: var(--space-4);
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+}
+@container (max-width: 820px) {
+  .pd-dossier { grid-template-columns: 1fr; }
+  /* stacked: lead with the work (Gantt/table/notes), rail below */
+  .pd-main { order: 1; }
+  .pd-rail { position: static; order: 2; }
+}
+
+/* ───────── Section header (Assignments / Notes) ───────── */
+.pd-sect {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 var(--space-3);
+}
+.pd-sect h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.pd-sect h3 .cnt {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* Empty state (mirrors the Notes .pd-empty-thread idiom: italic, muted, sm) */
+.pd-empty { font-size: var(--text-sm); color: var(--text-muted); font-style: italic; margin: var(--space-3) 0 var(--space-5); }
+
+/* ───────── Assignments table (Projects parity) ───────── */
+.pd-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-5);
+}
+.pd table { width: 100%; border-collapse: collapse; }
+.pd thead th {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  white-space: nowrap;
+  background: var(--bg-content);
+  border-bottom: 1px solid var(--border-soft);
+}
+.pd th.num, .pd td.num { text-align: right; }
+.pd tbody td {
+  padding: 0 var(--space-3);
+  height: 40px;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.pd tbody tr:last-child td { border-bottom: none; }
+.pd tbody tr { transition: background var(--duration-fast) var(--ease-out); }
+.pd tbody tr:nth-child(2n) td { background: var(--card-inset); }
+.pd tbody tr:hover td { background: var(--bg-card); }
+.pd-eng { color: var(--text-primary); font-weight: 500; }
+.pd-dt { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-muted); }
+.pd-cell-muted { color: var(--text-muted); }
+.pd-rowact {
+  display: inline-flex;
+  gap: var(--space-2);
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .pd-rowact { opacity: 0; }
+  .pd tbody tr:hover .pd-rowact,
+  .pd-rowact:focus-within { opacity: 1; }
+}
+
+/* ───────── Rail panels ───────── */
+.pd-panel { padding: 15px var(--space-4); border-top: 1px solid var(--border-subtle); }
+.pd-panel:first-child { border-top: none; }
+.pd-ph {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0 0 11px;
+  min-height: 18px;
+}
+.pd-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.pd-link {
+  color: var(--brand-cyan);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: var(--text-base);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pd-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.pd-link svg { width: 12px; height: 12px; flex-shrink: 0; }
+.pd-ph-meta { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); }
+
+/* Financials list */
+.pd-fin-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 7px 0;
+  gap: var(--space-3);
+}
+.pd-fin-row.divide { border-top: 1px solid var(--border-subtle); margin-top: var(--space-1); padding-top: 11px; }
+.pd-fin-row.pd-fin-stack { display: block; }
+.pd-fin-row.pd-fin-stack .pd-fin-k { display: block; margin-bottom: var(--space-2); }
+.pd-fin-k { font-size: var(--text-sm); color: var(--text-muted); }
+.pd-fin-v { font-family: var(--font-mono); font-size: var(--text-base); color: var(--text-primary); text-align: right; }
+.pd-fin-v.pos { color: var(--color-success); }
+.pd-fin-v.neg { color: var(--brand-red); }
+.pd-fin-v.cyan { color: var(--brand-cyan); }
+
+/* Total Cost drilldown trigger (ADR-0043) — a real <Button> for keyboard
+   reachability, stripped of the ghost chrome so the number stays flush right
+   and mono like every other rail value. Underline-on-hover is the affordance,
+   matching the Margin page's .mgn-drill pattern. */
+.pd-fin-v .pd-fin-drill.ui-button {
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: inherit;
+  color: var(--text-primary);
+}
+.pd-fin-v .pd-fin-drill.ui-button:hover {
+  background: none;
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Manager — inline avatar chip, flush right like other rail values */
+.pd-osm-row { align-items: center; }
+/* Neutralize the shared ghost-trigger chrome so the chip sits flush right
+   (the trigger is a <Button> rendered by SearchableSelect). */
+.pd-osm-row .ui-multiselect { display: inline-flex; }
+.pd-osm-row .ui-multiselect__trigger {
+  padding: 2px var(--space-1);
+  margin-right: calc(-1 * var(--space-1));
+  border-radius: var(--radius-md);
+}
+.pd-osm-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+.pd-osm-av {
+  width: 20px;
+  height: 20px;
+  font-size: var(--text-xs);
+}
+.pd-osm-name {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  white-space: nowrap;
+  /* breathing room so a descender (e.g. "g" in "Herzing") doesn't sit
+     flush against the chip's right/box edge */
+  padding-right: 2px;
+}
+.pd-osm-chip--empty .pd-osm-name { color: var(--text-muted); }
+/* No chevron — the row is clickable to open the picker; the hover background
+   below is the affordance. Keeps the value perfectly flush with the rail
+   numbers (a chevron either clipped at the box edge or broke that alignment). */
+@media (hover: hover) {
+  .pd-osm-row .ui-multiselect__trigger:hover { background: var(--bg-tertiary); }
+}
+
+/* ── Geist pill switch (Booted / Access Confirmed) ── */
+.pd-switch-row { display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.pd-switch-lab { font-size: var(--text-sm); }
+.pd-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+}
+.pd-switch::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  box-shadow: 0 1px 2px color-mix(in srgb, transparent 55%, var(--bg-body));
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), background var(--duration-fast) var(--ease-out);
+}
+.pd-switch:checked { background: var(--brand-cyan); border-color: var(--brand-cyan); }
+.pd-switch:checked::after { transform: translateX(14px); background: var(--bg-body); }
+.pd-switch:focus-visible { outline: 2px solid var(--brand-cyan); outline-offset: 2px; }
+
+/* ── Engagement panel header (eyebrow + optional refresh) ── */
+.pd-ph--sf { align-items: flex-start; }
+.pd-ph-lead { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pd-sf-refresh {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+}
+
+/* Engagement fields */
+.pd-sf-grid { display: grid; grid-template-columns: auto 1fr; gap: 7px var(--space-3); font-size: var(--text-sm); }
+.pd-sf-k { color: var(--text-muted); white-space: nowrap; }
+.pd-sf-v { color: var(--text-secondary); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+
+/* Full-width multiline field (Notes, Products): label on its own line, value
+   left-aligned and wrapped so long text stays readable. */
+.pd-sf-block { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--space-1); }
+.pd-sf-block-k { color: var(--text-muted); }
+.pd-sf-block-v {
+  color: var(--text-secondary);
+  text-align: left;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* Key Dates */
+.pd-kd-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 6px 0; }
+.pd-kd-row.divide { border-top: 1px solid var(--border-subtle); margin-top: var(--space-1); padding-top: 11px; }
+.pd-kd-k { font-size: var(--text-sm); color: var(--text-secondary); }
+.pd-kd-ro { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-primary); }
+
+/* Link row + scheduling copy */
+.pd-mini { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.pd-gid { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-sched-to { font-size: var(--text-sm); color: var(--text-muted); margin-bottom: 11px; }
+.pd-empty-note { font-size: var(--text-xs); color: var(--text-muted); font-style: italic; }
+
+/* ───────── Notes ───────── */
+.pd-notescard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) 18px;
+  margin-bottom: var(--space-6);
+}
+/* Notes header now lives inside the card (unified panel) */
+.pd-notescard-head { margin: 0 0 var(--space-3); }
+.pd-composer { display: flex; gap: 11px; align-items: flex-start; position: relative; }
+.pd-vbox {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+  overflow: hidden;
+}
+.pd-vbox:focus-within { border-color: var(--border-strong); box-shadow: 0 0 0 3px var(--accent-cyan-glow); }
+.pd-noteinput {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  padding: 10px var(--space-3);
+  resize: vertical;
+  line-height: 1.5;
+}
+.pd-noteinput::placeholder { color: var(--text-muted); }
+.pd-noteinput:focus { outline: none; }
+.pd-vfoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.pd-vhint { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); padding-left: var(--space-1); }
+.pd-vhint b { color: var(--text-secondary); font-weight: 500; }
+
+/* avatar — token-only initial chip */
+.pd-av {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  user-select: none;
+}
+
+/* comment thread — Cards */
+.pd-thread { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
+.pd-thread:empty, .pd-thread.is-empty { border-top: none; }
+.pd-item {
+  display: flex;
+  gap: 10px;
+  background: var(--card-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 11px 13px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.pd-item:hover { background: var(--bg-card-alt); }
+.pd-item .pd-av { width: 24px; height: 24px; }
+.pd-item-col { flex: 1; min-width: 0; }
+.pd-item-line { display: flex; align-items: baseline; gap: var(--space-2); }
+.pd-item-who { font-size: var(--text-base); font-weight: 600; color: var(--text-primary); }
+.pd-item-ago { font-size: var(--text-xs); color: var(--text-muted); }
+.pd-item-del { margin-left: auto; transition: opacity var(--duration-fast) var(--ease-out); }
+@media (hover: hover) {
+  .pd-item-del { opacity: 0; }
+  .pd-item:hover .pd-item-del,
+  .pd-item-del:focus-within { opacity: 1; }
+}
+.pd-item-body { font-size: var(--text-base); color: var(--text-secondary); margin-top: var(--space-1); line-height: 1.55; white-space: pre-wrap; }
+.pd-empty-thread { font-size: var(--text-sm); color: var(--text-muted); font-style: italic; margin-top: var(--space-3); }
+.pd-notes-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* ───────── Loading skeleton (shimmer; .sk/.sk--shimmer are global in ui.css) ───────── */
+.pdsk-titlebar { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); margin-bottom: 10px; }
+.pdsk-title { width: 420px; max-width: 60vw; height: 30px; border-radius: var(--radius-md); }
+.pdsk-uid { width: 78px; height: 22px; }
+.pdsk-badge { width: 84px; height: 26px; border-radius: var(--radius-pill); }
+.pdsk-dates { width: 220px; height: 14px; margin-bottom: var(--space-5); }
+.pdsk-dossier { display: grid; grid-template-columns: 332px minmax(0, 1fr); gap: var(--space-6); align-items: start; }
+.pdsk-rail { background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: var(--radius-lg); }
+.pdsk-panel { padding: 15px var(--space-4); border-top: 1px solid var(--border-subtle); }
+.pdsk-panel:first-child { border-top: none; }
+.pdsk-eyebrow { height: 11px; margin-bottom: 14px; }
+.pdsk-frow { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; gap: var(--space-3); }
+.pdsk-line { height: 11px; }
+.pdsk-main { min-width: 0; }
+.pdsk-gantt { border: 1px solid var(--border-soft); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: var(--space-5); background: var(--bg-content); }
+.pdsk-ghead { display: flex; align-items: center; gap: var(--space-4); padding: 10px var(--space-4); border-bottom: 1px solid var(--border-soft); }
+.pdsk-ghead-name { width: 150px; height: 14px; }
+.pdsk-ghead-track { flex: 1; height: 14px; }
+.pdsk-grow { display: flex; align-items: center; height: 38px; border-bottom: 1px solid var(--border-soft); }
+.pdsk-grow:last-child { border-bottom: none; }
+.pdsk-gname { width: 150px; flex-shrink: 0; padding: 0 var(--space-4); border-right: 1px solid var(--border-soft); }
+.pdsk-gname .pdsk-line { height: 12px; }
+.pdsk-gtl { flex: 1; position: relative; height: 100%; }
+.pdsk-bar { position: absolute; top: 6px; bottom: 6px; border-radius: 2px; }
+.pdsk-secttl { width: 160px; height: 18px; margin: 0 0 var(--space-3); }
+.pdsk-table { border: 1px solid var(--border-soft); border-radius: var(--radius-lg); overflow: hidden; }
+.pdsk-trow { display: flex; align-items: center; gap: var(--space-4); height: 40px; padding: 0 var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.pdsk-trow:last-child { border-bottom: none; }
+.pdsk-trow--head { background: var(--bg-content); }
+@media (max-width: 1080px) {
+  .pdsk-dossier { grid-template-columns: 1fr; }
+}
+
+/* add-assignment inline form card */
+.pd-addform {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: var(--space-3);
+}

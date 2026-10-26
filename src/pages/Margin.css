@@ -1,0 +1,242 @@
+/* ═══════════ Margin — Vercel/Geist refresh ═══════════
+   Synonymous with the Revenue (.rv) and Historicals (.hist) dashboards: flat
+   surfaces (no card boxes), hairline framing, hierarchy through size + space.
+   The hero is a diverging "Margin bars" chart (one bar per period = the margin,
+   green above the 0 line / red below); a flat KPI row sits above and two
+   full-width breakdown tables below. All rules scoped under .mgn; token-only
+   colors (CI lint scans this file). The revenue/cost/margin hues have no token —
+   they come inline from the COLOR_* consts in marginUtils via the .tsx, same
+   pattern as CAT_COLORS on Revenue. The Margin % cell color (≥70% green / red)
+   is also applied inline from the .tsx. */
+
+.mgn { max-width: 1400px; margin: 0 auto; }
+
+/* ───────── Header: title + Monthly/Quarterly underline tabs (Resourcing parity) ───────── */
+.mgn-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.mgn-tabs { display: inline-flex; gap: var(--space-5); border-bottom: 1px solid var(--border-soft); }
+
+/* ───────── Filter bar — "Quiet Rails" ghost controls (Resourcing parity) ───────── */
+.mgn-filters {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+.mgn-filters-spacer { margin-left: auto; }
+/* ADR-0039 — the project table's own membership-only filter row: tighter gap so
+   it reads as part of the section, not a second page header. */
+.mgn-filters--table { margin-bottom: var(--space-3); }
+.mgn-divider { width: 1px; height: 20px; background: var(--border-subtle); flex-shrink: 0; }
+
+/* ───────── KPI summary — flat stat row, no card box ───────── */
+.mgn-kpis {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+.mgn-kpi { flex: 1; min-width: 0; padding: 0 var(--space-5); border-left: 1px solid var(--border-subtle); }
+.mgn-kpi:first-child { border-left: none; padding-left: 0; }
+.mgn-kpi-l {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.mgn-kpi-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); flex-shrink: 0; }
+.mgn-kpi-v {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: var(--space-2);
+  letter-spacing: -0.01em;
+}
+
+/* ───────── Section headers (mirror .rv-sect / .ed-sect) ───────── */
+.mgn-sect { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); margin: 0 0 var(--space-3); }
+.mgn-sect.gap { margin-top: var(--space-6); }
+.mgn-sect h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.mgn-cnt { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-muted); font-weight: 400; }
+
+/* ───────── Legend (static inline key) ───────── */
+.mgn-legend { display: flex; gap: var(--space-4); align-items: center; }
+.mgn-legend-i { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); }
+.mgn-legend-sw { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* ───────── Chart — flat on true-black; scrolls only when needed ───────── */
+.mgn-chart { position: relative; padding-top: var(--space-4); }
+.mgn-chart-scroll { overflow-x: auto; overflow-y: hidden; }
+.mgn-chart svg { display: block; }
+.mgn-axis { fill: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.mgn-xlabel { fill: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+.mgn-vlabel { fill: var(--text-primary); font-family: var(--font-mono); font-size: 11px; }
+.mgn-empty {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-7);
+  text-align: center;
+  color: var(--text-muted);
+}
+.mgn-empty span { font-size: var(--text-sm); }
+
+/* Tooltip — own layer (anchored on mouseEnter; no SVG repaint on hover) */
+.mgn-tip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 30;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  min-width: 200px;
+  box-shadow: 0 8px 24px color-mix(in srgb, transparent 55%, var(--bg-body));
+}
+.mgn-tip-t { font-family: var(--font-display); font-weight: 600; color: var(--text-primary); font-size: var(--text-sm); margin-bottom: var(--space-2); }
+.mgn-tip-r { display: flex; align-items: center; gap: var(--space-2); justify-content: space-between; margin: 3px 0; font-size: var(--text-sm); }
+.mgn-tip-lab { display: flex; align-items: center; gap: var(--space-2); color: var(--text-secondary); }
+.mgn-tip-sw { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.mgn-tip-num { font-family: var(--font-mono); color: var(--text-primary); }
+.mgn-tip-tot { border-top: 1px solid var(--border-subtle); margin-top: var(--space-2); padding-top: var(--space-2); font-weight: 600; }
+.mgn-tip-hint { color: var(--text-muted); font-size: 10px; margin-top: var(--space-2); font-family: var(--font-mono); }
+
+/* ───────── Tables (full-width; Projects/.rv/.hist parity) ─────────
+   table-layout: fixed bounds the table to the container width and keeps the
+   sticky header from blowing out to a huge composited layer (the Historicals
+   GPU-jank saga); column widths come from each <colgroup>, cells clip+ellipsize. */
+.mgn-tbl-wrap { overflow: auto; border: 1px solid var(--border-soft); border-radius: var(--radius-lg); }
+.mgn table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.mgn thead th {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  white-space: nowrap;
+  background: var(--bg-content);
+  border-bottom: 1px solid var(--border-soft);
+  position: sticky;
+  top: 0;
+  /* keep the pinned header above scrolling rows (their zebra/hover backgrounds
+     otherwise paint over a sticky header that has no stacking context) */
+  z-index: 2;
+  cursor: pointer;
+  user-select: none;
+}
+.mgn thead th:hover { color: var(--text-secondary); }
+.mgn th.num, .mgn td.num { text-align: right; }
+/* the Mix-tick column is the fluid grow column so numbers sit tight-right and
+   the period/client column stays readable */
+.mgn th.mgn-mixhead, .mgn td.mgn-mix { width: 100%; }
+.mgn tbody td {
+  padding: 0 var(--space-3);
+  height: 42px;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mgn tbody tr:last-child td { border-bottom: none; }
+.mgn tbody tr { transition: background var(--duration-fast) var(--ease-out); }
+.mgn tbody tr:nth-child(2n) td { background: var(--card-inset); }
+.mgn tbody tr:hover td { background: var(--bg-card); }
+.mgn td.cap, .mgn th.cap { font-family: var(--font-display); color: var(--text-primary); }
+.mgn td.mono { font-family: var(--font-mono); }
+/* Margin column = primary white (Ian's rule); Margin-% color comes inline */
+.mgn td.amt { color: var(--text-primary); font-family: var(--font-mono); text-align: right; }
+.mgn th.th-amt { color: var(--text-primary); }
+/* the long column (Project) grows + ellipsizes; short columns stay natural */
+.mgn td.grow, .mgn th.grow { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mgn-drill { cursor: pointer; }
+.mgn-drill:hover { text-decoration: underline; text-underline-offset: 2px; }
+.mgn-plink { color: var(--brand-cyan); text-decoration: none; }
+.mgn-plink:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* Total row reads white; the selector outweighs `.mgn tbody td` so the label +
+   Margin aren't dragged to the muted body color; inline-colored cells still win. */
+.mgn tbody tr.mgn-tot td { border-top: 2px solid var(--border); border-bottom: none; font-weight: 700; color: var(--text-primary); background: transparent !important; }
+
+/* ───────── Windowed project table (perf: render only viewport rows) ─────────
+   Only the "Margin per project" table windows — it can hold ~325 rows. It scrolls
+   inside its own bounded box (its own scrollbar) so a sidebar toggle re-rasters ~30
+   rows, not 325 ([[jupiter-windows-gpu-paint-jank]]). Header stays pinned at the top
+   and the Total row is pinned at the bottom of the box. */
+.mgn-tbl-wrap--windowed { max-height: 70vh; }
+/* Spacer rows hold the off-screen scroll height — no chrome, never hoverable. */
+.mgn-tbl-wrap--windowed tbody tr.mgn-spacer td { padding: 0; height: 0; border: none; background: transparent !important; }
+.mgn-tbl-wrap--windowed tbody tr.mgn-spacer:hover td { background: transparent !important; }
+/* Index-driven zebra (spacers would break :nth-child parity while scrolling). */
+.mgn-tbl-wrap--windowed tbody tr:nth-child(2n) td { background: transparent; }
+.mgn-tbl-wrap--windowed tbody tr.mgn-zebra td { background: var(--card-inset); }
+.mgn-tbl-wrap--windowed tbody tr.mgn-zebra:hover td { background: var(--bg-card); }
+/* Pin the Total row to the bottom of the scroll box (needs an opaque fill so rows
+   don't show through — overrides the transparent base Total rule above). */
+.mgn-tbl-wrap--windowed tbody tr.mgn-tot td { position: sticky; bottom: 0; z-index: 2; background: var(--bg-content) !important; }
+
+/* Mix column — Revenue's softened proportion ticks (cost + margin, no track/border).
+   Fills the fluid grow column so the cost/margin rail spans the width instead of
+   leaving a dead gap before the right-aligned numbers on wide screens. */
+.mgn-tick { display: flex; gap: var(--space-1); height: 5px; width: 100%; min-width: 120px; }
+.mgn-tick span { height: 100%; border-radius: var(--radius-pill); }
+
+/* ───────── Drilldown (inside the shared <Dialog> primitive) ───────── */
+.mgn-dempty { color: var(--text-muted); text-align: center; padding: var(--space-6) 0; }
+/* Sticky header inside the Dialog: the shared .ui-dialog__body has
+   padding:var(--space-5), so a sticky top:0 header would pin 24px down with rows
+   peeking through. Zero the body's TOP padding when it holds our table, and move
+   the gap to the (non-scrolling) header — the verified Revenue.css :has() trick
+   (box-shadow / negative-top both FAIL in the motion-transformed panel). */
+.ui-dialog__body:has(> .mgn-drilltbl) { padding-top: 0; }
+.ui-dialog__header:has(~ .ui-dialog__body > .mgn-drilltbl) { padding-bottom: var(--space-4); }
+
+/* ───────── Loading skeleton (.sk/.sk--shimmer global in ui.css) ───────── */
+.mgnsk { max-width: 1400px; margin: 0 auto; }
+.mgnsk-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-6); }
+.mgnsk-tool { height: 32px; width: 92px; border-radius: var(--radius-md); }
+.mgnsk-tool.sm { width: 64px; }
+.mgnsk-kpis { display: flex; border-bottom: 1px solid var(--border-subtle); padding-bottom: var(--space-5); margin-bottom: var(--space-6); }
+.mgnsk-kpi { flex: 1; padding: 0 var(--space-5); border-left: 1px solid var(--border-subtle); }
+.mgnsk-kpi:first-child { border-left: none; padding-left: 0; }
+.mgnsk-kpi-l { width: 92px; height: 11px; margin-bottom: var(--space-3); }
+.mgnsk-kpi-v { width: 128px; height: 24px; }
+.mgnsk-secttl { width: 200px; height: 18px; margin-bottom: var(--space-4); }
+/* diverging-bar shimmer: bars sit on a mid baseline, most rise, one dips */
+.mgnsk-chart { display: flex; align-items: center; gap: 18px; height: 300px; padding-left: 48px; }
+.mgnsk-barwrap { flex: 1; display: flex; flex-direction: column; justify-content: center; height: 100%; }
+.mgnsk-bar { border-radius: 3px 3px 0 0; }
+.mgnsk-secttl2 { width: 170px; height: 18px; margin: var(--space-6) 0 var(--space-3); }
+.mgnsk-table { border: 1px solid var(--border-soft); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: var(--space-3); }
+.mgnsk-trow { display: flex; align-items: center; gap: var(--space-5); height: 42px; padding: 0 var(--space-3); border-bottom: 1px solid var(--border-subtle); }
+.mgnsk-trow:last-child { border-bottom: none; }
+.mgnsk-trow--head { background: var(--bg-content); height: 34px; }
+.mgnsk-c { height: 11px; width: 70px; }
+.mgnsk-c.grow { flex: 1; }
+.mgnsk-c.n { width: 120px; margin-left: auto; }
+.mgnsk-c.n2 { width: 120px; }

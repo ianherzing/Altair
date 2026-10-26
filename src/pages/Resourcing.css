@@ -1,0 +1,46 @@
+/* Geist assignment fills. Tokens only — the shared getBarBackground helper
+   still serves other pages with the legacy hex palette. */
+.res-bar--pto { background: var(--bar-pto); color: var(--bar-text-light); }
+.res-bar--nonbill { background: var(--bar-nonbill); color: var(--bar-text-dark); }
+.res-bar--hard { background: var(--bar-billable-hard); color: var(--bar-text-light); }
+.res-bar--holiday {
+  background: repeating-linear-gradient(45deg, rgba(180,180,180,0.10) 0px, rgba(180,180,180,0.10) 4px, rgba(200,200,200,0.38) 4px, rgba(200,200,200,0.38) 8px);
+}
+.res-bar--soft {
+  background: repeating-linear-gradient(-45deg, var(--bar-billable-soft-a) 0px, var(--bar-billable-soft-a) 7px, var(--bar-billable-soft-b) 7px, var(--bar-billable-soft-b) 14px);
+  color: var(--bar-text-light);
+}
+
+/* Skill proficiency range — segmented 1·2·3 accessory on the Skills filter.
+   Lives here so the shared MultiSelect stylesheet stays untouched. */
+.skill-range {
+  display: inline-flex;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.skill-range__cell {
+  width: 20px;
+  padding: 2px 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: transparent;
+  border-left: 1px solid var(--border-soft);
+  cursor: pointer;
+  user-select: none;
+}
+.skill-range__cell:first-child {
+  border-left: none;
+}
+.skill-range__cell--on {
+  background: var(--brand-cyan);
+  color: var(--bg-content);
+  font-weight: 600;
+}
+.skill-range__cell:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}

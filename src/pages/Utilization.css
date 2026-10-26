@@ -1,0 +1,379 @@
+/* ═══════════ Utilization — Vercel/Geist refresh ═══════════
+   Synonymous with the Capacity (.cap) / Revenue (.rv) / Margin (.mgn)
+   dashboards: flat surfaces (no card boxes), hairline framing, hierarchy
+   through size + space. The hero is a heat-grid matrix — one row per engineer,
+   one column per month, cells shaded by utilization. A flat KPI row + legend
+   sit above; an opaque sticky Org-Average footer sits below.
+
+   All rules scoped under .util; token-only colors (CI lint scans this file).
+   The heat hues have NO token — they come inline from the UTIL_BANDS const in
+   utilizationUtils via the .tsx (same pattern as COLOR_* on Capacity / Margin
+   and CAT_COLORS on Revenue): every cell/footer/legend color is a string the
+   utils RETURN and the .tsx passes into inline style. */
+
+.util { max-width: 1400px; margin: 0 auto; }
+
+/* ───────── Header: title + meta + circular info button ───────── */
+.util-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.util-titlewrap { display: flex; align-items: center; gap: var(--space-2); }
+
+/* Circular "ⓘ" info button — built from <Button variant="ghost"> (mirrors
+   Capacity's .cap-info; the design system has no modal-opening info-icon
+   primitive — InfoPopover is a panel-eyebrow inline tooltip). */
+.util-info.ui-button {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.util-info.ui-button:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* ───────── Filter bar — "Quiet Rails" ghost controls (Capacity parity) ───────── */
+.util-filters {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.util-filters-spacer { margin-left: auto; }
+
+/* "Show archived engineers" toggle — a label-wrapped checkbox styled as a
+   Geist switch (no raw <button>; the native checkbox is visually hidden and
+   driven by the .util-switch track). */
+.util-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.util-toggle:hover { color: var(--text-secondary); }
+.util-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.util-switch {
+  width: 30px;
+  height: 17px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  position: relative;
+  transition: background var(--duration-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+.util-switch::after {
+  content: '';
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border-radius: var(--radius-pill);
+  background: var(--text-secondary);
+  top: 2px;
+  left: 2px;
+  transition: left var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.util-toggle.on { color: var(--text-primary); }
+.util-toggle.on .util-switch { background: var(--brand-cyan-dark); }
+.util-toggle.on .util-switch::after { left: 15px; background: var(--text-primary); }
+/* Keyboard focus ring on the visually-hidden checkbox → ring the track. */
+.util-toggle input:focus-visible + .util-switch {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* ───────── KPI summary — flat stat row, no card box (mirrors .cap-kpis) ───────── */
+.util-kpis {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+.util-kpi { flex: 1; min-width: 0; padding: 0 var(--space-5); border-left: 1px solid var(--border-subtle); }
+.util-kpi:first-child { border-left: none; padding-left: 0; }
+.util-kpi-l {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.util-kpi-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); flex-shrink: 0; }
+.util-kpi-v {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: var(--space-2);
+  letter-spacing: -0.01em;
+}
+/* Org-YTD value chip — shaded with the grid's heat band (bg + ink come inline). */
+.util-kpi-v.shaded {
+  display: inline-block;
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-md);
+  line-height: 1.25;
+}
+.util-kpi-sub { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); margin-top: 6px; }
+
+/* ───────── Legend (band pills + note) ───────── */
+.util-legend {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+}
+.util-legend-pill {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+}
+.util-legend-note { font-style: italic; color: var(--text-muted); font-size: var(--text-sm); }
+.util-legend-sep { color: var(--border); font-size: var(--text-md); }
+
+/* ───────── Heat grid ───────── */
+.util-grid-wrap {
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  max-height: calc(100vh - 320px);
+}
+.util-grid { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+.util-grid th, .util-grid td {
+  border-right: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+/* Sticky month + name header row */
+.util-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--bg-content);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  height: 34px;
+  padding: 0 var(--space-2);
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+.util-grid thead th .util-sortcaret { opacity: 0.55; font-size: 9px; margin-left: 3px; }
+.util-grid thead th.util-colname {
+  text-align: left;
+  padding-left: var(--space-3);
+  width: 156px;
+  min-width: 156px;
+  left: 0;
+  z-index: 5;
+}
+.util-grid thead th.util-colytd {
+  color: var(--text-primary);
+  border-left: 2px solid var(--border);
+  background: color-mix(in srgb, var(--bg-content) 84%, var(--brand-cyan));
+}
+.util-grid thead th.util-future { font-style: italic; color: var(--text-muted); }
+
+/* Body cells */
+.util-grid td {
+  height: 30px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+/* Sticky engineer name column */
+.util-grid td.util-cellname {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  text-align: left;
+  padding: 2px var(--space-3);
+  background: var(--bg-content);
+  font-family: var(--font-display);
+  width: 156px;
+  min-width: 156px;
+  max-width: 156px;
+}
+.util-grid tbody tr:nth-child(2n) td.util-cellname { background: var(--bg-card); }
+.util-grid td.util-cellname a {
+  color: var(--brand-cyan);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: var(--text-base);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+.util-grid td.util-cellname a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.util-grid td.util-cellname .util-title {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.util-grid td.util-cellname .util-departed {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 600;
+  font-size: var(--text-base);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Heat cell — click → drilldown; hover outline for affordance */
+.util-grid td.util-cell { cursor: pointer; }
+.util-grid td.util-cell:hover { outline: 1.5px solid var(--text-primary); outline-offset: -1.5px; }
+.util-grid td.util-future-edge { border-left: 2px dashed var(--border-strong); }
+
+/* YTD column — heat-shaded, 2px left divider, check/cross icon vs target */
+.util-grid td.util-ytd {
+  border-left: 2px solid var(--border);
+  font-weight: 700;
+}
+.util-grid td.util-ytd .util-tgt {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: var(--space-1);
+}
+
+/* Opaque sticky Org-Average footer (must not be see-through) */
+.util-grid tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  background: var(--bg-content);
+  border-top: 3px solid var(--border-strong);
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  height: 40px;
+  text-align: center;
+}
+.util-grid tfoot td.util-cellname {
+  left: 0;
+  z-index: 5;
+  font-family: var(--font-display);
+  background: var(--bg-content);
+}
+.util-grid tfoot td.util-ytd { border-left: 2px solid var(--border); }
+
+/* Org-Average value chip (T4 · Pill) — solid/dimmed band-hue pill on a neutral cell */
+.util-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-weight: 800;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.util-empty {
+  padding: var(--space-7);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+}
+
+/* ───────── Drilldown + Info (rendered inside the shared <Dialog> primitive,
+   which owns the overlay/panel chrome + spring entrance) ───────── */
+.util-dd-sub { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--space-3); }
+.util-calc {
+  background: var(--bg-card-alt);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.9;
+  margin-bottom: var(--space-4);
+  color: var(--text-secondary);
+}
+.util-calc b { color: var(--text-primary); }
+.util-calc .util-rule { border-top: 1px solid var(--border-subtle); margin-top: 6px; padding-top: 6px; }
+.util-calc-lead { font-size: var(--text-base); color: var(--text-secondary); line-height: 1.6; }
+.util-calc-lead b { color: var(--text-primary); }
+
+.util-dd-tbl { width: 100%; border-collapse: collapse; }
+.util-dd-tbl th {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.util-dd-tbl td {
+  padding: var(--space-2);
+  font-size: var(--text-base);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+.util-dd-tbl td.util-dd-proj { color: var(--text-primary); font-family: var(--font-display); }
+.util-dd-tbl td.util-dd-type { text-align: center; font-weight: 600; font-size: var(--text-sm); }
+.util-dd-tbl td.util-dd-num { text-align: right; font-family: var(--font-mono); color: var(--text-primary); font-weight: 600; }
+.util-dd-empty { color: var(--text-muted); font-size: var(--text-base); font-style: italic; }
+
+/* ───────── Loading skeleton (.utsk-*) — shaped like this page ───────── */
+.utsk { max-width: 1400px; margin: 0 auto; }
+.utsk-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-5); }
+.utsk-tool { height: 32px; width: 92px; border-radius: var(--radius-md); }
+.utsk-tool.sm { width: 64px; }
+.utsk-kpis { display: flex; border-bottom: 1px solid var(--border-subtle); padding-bottom: var(--space-5); margin-bottom: var(--space-5); }
+.utsk-kpi { flex: 1; padding: 0 var(--space-5); border-left: 1px solid var(--border-subtle); }
+.utsk-kpi:first-child { border-left: none; padding-left: 0; }
+.utsk-kpi-l { width: 92px; height: 11px; margin-bottom: var(--space-3); }
+.utsk-kpi-v { width: 96px; height: 24px; }
+.utsk-legend { width: 280px; height: 14px; margin-bottom: var(--space-3); }
+/* Fill the same vertical area as the real grid (.util-grid-wrap max-height)
+   so the shimmer runs the full height down to where the footer would sit. */
+.utsk-grid { border: 1px solid var(--border-soft); border-radius: var(--radius-lg); padding: var(--space-3); display: flex; flex-direction: column; gap: 9px; min-height: calc(100vh - 320px); }
+.utsk-grow { display: flex; gap: 9px; align-items: center; }
+.utsk-name { width: 156px; min-width: 156px; height: 22px; border-radius: var(--radius-sm); }
+.utsk-grow--head .utsk-name, .utsk-grow--head .utsk-cell { height: 13px; }
+.utsk-cell { flex: 1; height: 22px; border-radius: var(--radius-sm); }
+.utsk-cell--ytd { flex: 0 0 64px; }

@@ -11,12 +11,12 @@ const STATUS_LABELS: Record<RevenueStatus, string> = {
 }
 
 const STATUS_COLORS: Record<RevenueStatus, string> = {
-  to_do: '#8B8FA3',
-  soft_unconfirmed: '#28A36A',
-  soft_at_risk: '#F0642B',
-  hard_scheduled: '#E63948',
-  active: '#11C3DB',
-  done: '#D4AF37',
+  to_do: '#E8DBC0',
+  soft_unconfirmed: '#006C35',
+  soft_at_risk: '#C9654F',
+  hard_scheduled: '#B65540',
+  active: '#D6B25E',
+  done: '#3DDC84',
 }
 
 const ALL_STATUSES: RevenueStatus[] = [

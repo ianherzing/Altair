@@ -184,6 +184,10 @@
   box-shadow: 0 0 0 4px var(--accent-red-glow);
 }
 
+.ui-button__spinner {
+  animation: spin 0.8s linear infinite;
+}
+
 /* ───────── Field + Input ───────── */
 .ui-field {
   display: flex;
@@ -252,6 +256,7 @@
   border-radius: var(--radius-pill);
   border: 1px solid transparent;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .ui-badge--solid-neutral  { background: var(--bg-tertiary);  color: var(--text-primary); }
@@ -260,11 +265,13 @@
 .ui-badge--solid-critical { background: var(--color-critical); color: #FFFFFF; }
 .ui-badge--solid-success  { background: var(--color-success);  color: var(--on-brand); }
 
-.ui-badge--soft-neutral   { background: rgba(120,146,132,0.12); color: var(--text-secondary); border-color: var(--border-soft); }
-.ui-badge--soft-info      { background: var(--fill-info);       color: var(--color-info);    border-color: rgba(47,210,122,0.3); }
-.ui-badge--soft-warning   { background: var(--fill-medium);     color: var(--color-medium);  border-color: rgba(214,178,94,0.3); }
-.ui-badge--soft-critical  { background: var(--fill-critical);   color: var(--color-critical); border-color: rgba(182,85,64,0.3); }
-.ui-badge--soft-success   { background: var(--fill-success);    color: var(--color-success); border-color: rgba(61,220,132,0.3); }
+.ui-badge--soft-neutral   { background: rgba(160,164,168,0.12); color: var(--text-secondary); border-color: var(--border-soft); }
+.ui-badge--soft-info      { background: var(--fill-info);       color: var(--color-info);    border-color: rgba(40,163,106,0.3); }
+.ui-badge--soft-warning   { background: var(--fill-medium);     color: var(--color-medium);  border-color: rgba(212,175,55,0.3); }
+.ui-badge--soft-critical  { background: var(--fill-critical);   color: var(--badge-critical-fg); border-color: rgba(230,57,72,0.3); }
+.ui-badge--soft-success   { background: var(--fill-success);    color: var(--badge-success-fg); border-color: rgba(34,197,94,0.3); }
+/* Service (Key Type) — brand cyan, distinct from the green Active status. */
+.ui-badge--soft-service   { background: var(--badge-service-bg); color: var(--badge-service-fg); border-color: var(--badge-service-border); }
 
 /* ───────── StatusDot ───────── */
 .ui-statusdot {
@@ -346,4 +353,756 @@
 }
 .ui-table__sort-icon--idle {
   opacity: 0.35;
+}
+
+/* ───────── Dialog (centered modal, Emil-style spring entrance) ─────────
+   Animatable properties (transform + opacity) live on motion.div props in
+   Dialog.tsx; static visuals (backdrop blur, panel chrome) live here so
+   the GPU-cheap animation path stays clean.
+   ─────────────────────────────────────────────────────────────────────── */
+.ui-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ui-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.ui-dialog__panel {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+  outline: none;
+}
+.ui-dialog__header {
+  padding: var(--space-5) var(--space-5) 0;
+}
+.ui-dialog__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+  line-height: var(--leading-snug);
+}
+.ui-dialog__description {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+.ui-dialog__body {
+  padding: var(--space-5);
+  overflow-y: auto;
+  flex: 1;
+  /* A flex child's default min-height:auto refuses to shrink below its content,
+     so a tall dialog body never scrolls — it overflows the panel and the footer
+     (with the primary action) gets clipped by the panel's overflow:hidden.
+     min-height:0 lets the body shrink and its own overflow-y:auto engage, keeping
+     the header + footer pinned. Surfaced by the tall ADR-0034 Create-API-Key form. */
+  min-height: 0;
+}
+.ui-dialog__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border-soft);
+}
+
+/* ───────── Skeleton (grid-mirror loading state) ─────────
+   Used by <LoadingState variant="grid" />. Renders a stack of rows that
+   mirror the Resourcing timeline (name column + week columns) so layout
+   doesn't reflow when data arrives. Pure CSS pulse — no JS animation cost.
+   ──────────────────────────────────────────────────────── */
+@keyframes ui-skeleton-pulse {
+  0%   { opacity: 0.5; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
+.ui-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-4) 0;
+}
+.ui-skeleton__row {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  gap: 0;
+}
+.ui-skeleton__name {
+  flex: 0 0 240px;
+  height: 14px;
+  margin: 0 12px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  animation: ui-skeleton-pulse 1.4s var(--ease-out) infinite;
+}
+.ui-skeleton__weeks {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(20, 1fr);
+  height: 100%;
+  align-items: center;
+}
+.ui-skeleton__week {
+  height: 100%;
+  position: relative;
+  border-left: 1px solid var(--border-soft);
+}
+.ui-skeleton__bar {
+  position: absolute;
+  inset: 6px 4px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  animation: ui-skeleton-pulse 1.4s var(--ease-out) infinite;
+}
+/* Stagger the bar pulse a touch so the eye reads it as breathing, not strobing */
+.ui-skeleton__row:nth-child(2n) .ui-skeleton__bar { animation-delay: 0.2s; }
+.ui-skeleton__row:nth-child(3n) .ui-skeleton__bar { animation-delay: 0.4s; }
+.ui-skeleton__row:nth-child(2n) .ui-skeleton__name { animation-delay: 0.2s; }
+.ui-skeleton__row:nth-child(3n) .ui-skeleton__name { animation-delay: 0.4s; }
+
+/* ───────── Shimmer skeleton (PageSkeleton) ─────────
+   A moving sheen sweeps across each placeholder block (vs the breathing pulse
+   above). Used for the route <Suspense> fallback and <LoadingState variant="page">.
+   ──────────────────────────────────────────────────── */
+@keyframes ui-skeleton-shimmer {
+  0%   { background-position: -180% 0; }
+  100% { background-position: 180% 0; }
+}
+.sk {
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.sk--shimmer {
+  background: linear-gradient(100deg, var(--bg-elevated) 30%, var(--bg-tertiary) 50%, var(--bg-elevated) 70%);
+  background-size: 200% 100%;
+  animation: ui-skeleton-shimmer 1.6s linear infinite;
+}
+
+.page-skeleton {
+  padding: var(--space-5) 0;
+}
+.page-skeleton__titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-5);
+}
+.page-skeleton__title {
+  width: 160px;
+  height: 26px;
+  border-radius: var(--radius-md);
+}
+.page-skeleton__toolbar {
+  display: flex;
+  gap: var(--space-2);
+}
+.page-skeleton__btn {
+  width: 100px;
+  height: 30px;
+  border-radius: var(--radius-md);
+}
+.page-skeleton__filters {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+.page-skeleton__chip {
+  height: 30px;
+  border-radius: var(--radius-md);
+}
+.page-skeleton__table {
+  display: flex;
+  flex-direction: column;
+}
+.page-skeleton__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  height: 38px;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.page-skeleton__row--head {
+  height: 34px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.page-skeleton__row--head .page-skeleton__cell {
+  height: 9px;
+  opacity: 0.7;
+}
+.page-skeleton__cell {
+  height: 11px;
+  border-radius: var(--radius-sm);
+}
+.page-skeleton__cell:nth-child(2n) { animation-delay: 0.15s; }
+.page-skeleton__cell:nth-child(3n) { animation-delay: 0.3s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sk--shimmer { animation: none; }
+}
+
+/* ───────── Kanban board skeleton (KanbanSkeleton) ───────── */
+.kanban-skeleton { padding: var(--space-2) 0; }
+.kanban-skeleton__filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-5); }
+.kanban-skeleton__filter { height: 30px; width: 130px; border-radius: var(--radius-md); }
+.kanban-skeleton__filter:nth-child(1) { width: 200px; }
+.kanban-skeleton__filter:nth-child(3) { width: 120px; }
+.kanban-skeleton__filter:nth-child(4) { width: 110px; }
+.kanban-skeleton__cols {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(150px, 1fr));
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 10px;
+  margin-bottom: 6px;
+}
+.kanban-skeleton__colhead { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); }
+.kanban-skeleton__collbl { height: 9px; width: 70px; border-radius: var(--radius-sm); }
+.kanban-skeleton__colhead:nth-child(2n) .kanban-skeleton__collbl { width: 90px; }
+.kanban-skeleton__colhead:nth-child(3n) .kanban-skeleton__collbl { width: 56px; }
+.kanban-skeleton__colcnt { height: 16px; width: 22px; border-radius: var(--radius-pill); }
+.kanban-skeleton__lane { margin-top: var(--space-3); }
+.kanban-skeleton__lanehead { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+.kanban-skeleton__avatar { width: 22px; height: 22px; border-radius: var(--radius-pill); }
+.kanban-skeleton__name { height: 10px; width: 160px; border-radius: var(--radius-sm); }
+.kanban-skeleton__lane:nth-child(3n) .kanban-skeleton__name { width: 120px; }
+.kanban-skeleton__lanebody { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); }
+.kanban-skeleton__cell {
+  border-left: 1px solid var(--border-subtle);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 96px;
+}
+.kanban-skeleton__cell:first-child { border-left: none; }
+.kanban-skeleton__card {
+  background: var(--card-tile);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.kanban-skeleton__cuid { height: 8px; width: 54px; border-radius: var(--radius-sm); }
+.kanban-skeleton__cttl { height: 11px; width: 90%; border-radius: var(--radius-sm); }
+.kanban-skeleton__cttl2 { height: 11px; width: 60%; border-radius: var(--radius-sm); }
+.kanban-skeleton__cardfoot { display: flex; gap: 6px; margin-top: 2px; }
+.kanban-skeleton__chip { height: 14px; width: 46px; border-radius: var(--radius-pill); }
+.kanban-skeleton__chip--sm { width: 38px; }
+
+/* ───────── Command palette (⌘K) ─────────
+   Reuses .ui-dialog (positioning) and .ui-dialog__backdrop (scrim) for the
+   overlay so the grandfathered scrim rgba isn't redeclared here. Only the
+   palette-specific chrome lives below, and every value is a design token.
+   ──────────────────────────────────────── */
+.ui-cmdk {
+  align-items: flex-start;
+}
+.ui-cmdk__panel {
+  width: 560px;
+  margin-top: 12vh;
+}
+.ui-cmdk__search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text-muted);
+}
+.ui-cmdk__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+.ui-cmdk__input::placeholder {
+  color: var(--text-muted);
+}
+.ui-cmdk__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  max-height: 52vh;
+  overflow-y: auto;
+}
+.ui-cmdk__group {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ui-cmdk__item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+/* Fixed-width leading icon column so labels line up (Linear-style). Inherits
+   the row's color, so an active row brightens the icon along with the label. */
+.ui-cmdk__icon {
+  width: var(--space-5);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.ui-cmdk__item--secondary {
+  padding-left: var(--space-5);
+  color: var(--text-muted);
+}
+.ui-cmdk__item--active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+.ui-cmdk__item--active .ui-cmdk__icon {
+  color: var(--text-primary);
+}
+/* Right-aligned "G <key>" keycap chip. */
+.ui-cmdk__shortcut {
+  margin-left: auto;
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+.ui-cmdk__kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  min-width: var(--space-4);
+  text-align: center;
+  line-height: var(--leading-snug);
+}
+.ui-cmdk__empty {
+  padding: var(--space-5);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* ───────────────────────────────────────────────────────────────────
+   MultiSelect — Vercel/Geist "command menu" (mockup variant M3).
+   Trigger = the shipped .kanban-ghost ghost look; popover anchored below.
+   All values from tokens. Interaction (hover/active/keyboard wash) here;
+   open/search/keyboard state lives in MultiSelect.tsx.
+   ─────────────────────────────────────────────────────────────────── */
+.ui-multiselect {
+  position: relative;
+  display: inline-block;
+}
+/* The trigger reuses Button(ghost)+kanban-ghost; we only add layout + the
+   selection-cyan label treatment and the count badge. */
+.ui-multiselect__trigger {
+  font-family: var(--font-display);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  overflow: hidden;
+  max-width: 100%;
+}
+/* Contain the focus indicator inside the pill's rounded container. The global
+   *:focus-visible draws a SQUARE outline that bleeds past this ghost trigger's
+   border-radius (a box appears around one column-picker pill). Replace it with a
+   ring that follows the radius (box-shadow) plus a focus border, and drop the
+   square outline entirely. */
+.ui-multiselect__trigger:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-green-glow);
+}
+/* Truncate the trigger label so a long selected value (e.g. a project name in
+   the add-assignment row) ellipsizes inside the trigger instead of overflowing
+   into adjacent controls. Harmless for the short filter labels. */
+.ui-multiselect__label {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-multiselect__trigger--has .ui-multiselect__label {
+  color: var(--brand-green);
+}
+.ui-multiselect__chev {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-left: var(--space-1);
+  flex-shrink: 0;
+}
+.ui-multiselect__badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-1);
+}
+
+/* Popover */
+.ui-multiselect__pop {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--space-1);
+  width: 248px;
+  z-index: 100;
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.ui-multiselect__pop--right {
+  left: auto;
+  right: 0;
+}
+/* Wider popover for single-selects whose options are full names (e.g. the
+   engineer picker) so names like "Aaron Wasserman" read in full. Never narrower
+   than the trigger (min-width), capped to the viewport so it can't overflow a
+   small screen. */
+.ui-multiselect__pop--wide {
+  width: auto;
+  min-width: 320px;
+  max-width: min(360px, calc(100vw - var(--space-5)));
+}
+/* In the wide popover the name (label) gets priority; the role/meta shrinks and
+   ellipsizes first so it never starves the label of space. */
+.ui-multiselect__pop--wide .ui-multiselect__meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Stacked meta (opt-in via SingleSelect metaLayout="stacked"). The label and
+   check icon stay on the first line; the meta drops to a full-width second line
+   inside the SAME option row and wraps, so a long value (e.g. a frozen role
+   scope) reads in full instead of ellipsizing the label. Must follow the --wide
+   rule above to win on equal specificity (the popover carries both classes). */
+.ui-multiselect__pop--stacked-meta .ui-multiselect__opt {
+  flex-wrap: wrap;
+  row-gap: var(--space-1);
+}
+.ui-multiselect__pop--stacked-meta .ui-multiselect__meta {
+  order: 1;          /* sits after the check icon → wraps onto its own line */
+  flex: 0 0 100%;    /* full-width second line */
+  margin-left: 0;
+  overflow: visible;
+  white-space: normal;
+}
+
+/* Search row */
+.ui-multiselect__search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+}
+.ui-multiselect__search svg {
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+.ui-multiselect__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+}
+.ui-multiselect__input::placeholder {
+  color: var(--text-muted);
+}
+
+/* List */
+.ui-multiselect__list {
+  padding: var(--space-1);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.ui-multiselect__section {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: var(--space-2) var(--space-2) var(--space-1);
+}
+.ui-multiselect__opt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.ui-multiselect__opt:hover,
+.ui-multiselect__opt--active {
+  background: var(--bg-card-alt);
+  color: var(--text-primary);
+}
+.ui-multiselect__opt--sel {
+  color: var(--text-primary);
+}
+.ui-multiselect__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  flex: 0 0 auto;
+}
+.ui-multiselect__opt-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-multiselect__meta {
+  flex: 0 0 auto;
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.ui-multiselect__accessory {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--space-2);
+}
+
+/* Skill proficiency range — S1 "segmented 1·2·3" control. A 3-cell segmented
+   strip; cells inside [min,max] fill cyan with dark text, out-of-range cells
+   are muted with soft dividers. Used as a MultiSelect accessory on selected
+   skill rows in the Resourcing filter. */
+.skill-range {
+  display: inline-flex;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.skill-range__cell {
+  width: 20px;
+  padding: 2px 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: transparent;
+  border-left: 1px solid var(--border-soft);
+  cursor: pointer;
+  user-select: none;
+}
+.skill-range__cell:first-child {
+  border-left: none;
+}
+.skill-range__cell--on {
+  background: var(--brand-green);
+  color: var(--bg-content);
+  font-weight: 600;
+}
+.skill-range__cell:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+.ui-multiselect__check {
+  flex: 0 0 auto;
+  color: var(--brand-green);
+}
+.ui-multiselect__empty {
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* Footer */
+.ui-multiselect__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border-soft);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.ui-multiselect__hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ui-multiselect__kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+}
+.ui-multiselect__clear,
+.ui-multiselect__selectall {
+  color: var(--brand-green);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+/* ───────── DatePicker (DP-A) ───────── */
+.ui-datepicker {
+  position: relative;
+  display: inline-flex;
+}
+/* Trigger: a secondary Button reskinned as a field — value on the left, the
+   calendar icon pushed to the right edge. */
+.ui-datepicker__field {
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 132px;
+  width: 100%;
+  font-family: var(--font-display);
+}
+.ui-datepicker__field--empty .ui-datepicker__value {
+  color: var(--text-muted);
+}
+.ui-datepicker__icon {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+.ui-datepicker__value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Popover */
+.ui-datepicker__pop {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--space-1);
+  width: 268px;
+  z-index: 100;
+  background: var(--bg-content);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  /* ds-allow: layered popover elevation shadow — no token exists; mirrors .ui-multiselect__pop */
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  padding: var(--space-3);
+}
+.ui-datepicker__pop--right {
+  left: auto;
+  right: 0;
+}
+.ui-datepicker__pop--up {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: var(--space-1);
+}
+
+.ui-datepicker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.ui-datepicker__month {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ui-datepicker__dow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: var(--space-1);
+}
+.ui-datepicker__dow span {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: var(--space-1) 0;
+}
+
+.ui-datepicker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+/* Day cell: a ghost Button reset to a square calendar tile. */
+.ui-datepicker__day {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+}
+.ui-datepicker__day:hover:not(:disabled) {
+  background: var(--bg-card-alt);
+  color: var(--text-primary);
+}
+.ui-datepicker__day--out {
+  color: var(--text-muted);
+  opacity: 0.45;
+}
+.ui-datepicker__day--today {
+  /* inset hairline ring marks today without a fill */
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.ui-datepicker__day--selected,
+.ui-datepicker__day--selected:hover:not(:disabled) {
+  background: var(--brand-green);
+  color: var(--bg-content);
+  font-weight: 600;
 }

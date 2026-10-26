@@ -1,0 +1,221 @@
+/* Holidays — Vercel/Geist refresh (scoped .hol).
+   Presentation-only restyle of the holidays CRUD admin table. Mirrors the
+   converged dashboard idiom (centered 1400 cap, flat surfaces, Quiet-Rails
+   ghost filters, shared Dialog, mono-uppercase headers) adapted to a
+   country-sectioned list. All colors are var(--token). */
+
+.hol {
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 4rem);
+}
+
+/* ── Header ── */
+.hol-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  flex-shrink: 0;
+}
+.hol-titlewrap { display: flex; align-items: center; gap: var(--space-3); }
+/* circular info button (Capacity/Skills parity) */
+.hol-info.ui-button {
+  width: 22px; height: 22px; padding: 0; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-soft); color: var(--text-muted);
+  font-style: italic; font-family: Georgia, 'Times New Roman', serif; font-weight: 700; line-height: 1;
+}
+.hol-info.ui-button:hover { border-color: var(--border-strong); color: var(--text-secondary); }
+.hol-add-plus { font-family: var(--font-mono); color: var(--text-muted); margin-right: 4px; }
+.hol-addbtn.ui-button:hover .hol-add-plus { color: var(--text-secondary); }
+
+/* ── Filter bar — Quiet-Rails ghost controls ── */
+.hol-filters {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 20; /* keep the ghost popovers above the table */
+}
+.hol-meta {
+  margin-left: auto;
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+  display: flex; align-items: center; gap: 6px;
+}
+.hol-meta b { color: var(--text-secondary); font-weight: 600; }
+.hol-tdiv { width: 1px; height: 16px; background: var(--border-soft); margin: 0 4px; }
+
+/* ── Inline add bar ── */
+.hol-addbar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--card-inset);
+  padding: 14px var(--space-4);
+  margin-bottom: var(--space-4);
+  flex-shrink: 0;
+  animation: hol-slidedown 160ms var(--ease-out);
+}
+@keyframes hol-slidedown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.hol-fld { display: flex; flex-direction: column; gap: 5px; }
+.hol-fld-country { width: 184px; }
+.hol-fld-name { flex: 1; min-width: 200px; }
+.hol-fld-date { width: 168px; }
+.hol-flabel {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+/* recurring — custom box over the native input */
+.hol-recur {
+  display: inline-flex; align-items: center; gap: 8px; height: 32px;
+  font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+}
+.hol-recur input { position: absolute; opacity: 0; width: 0; height: 0; }
+.hol-recur-box {
+  width: 16px; height: 16px; flex-shrink: 0;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+.hol-recur-box svg { width: 11px; height: 11px; color: var(--bg-body); opacity: 0; }
+.hol-recur input:checked + .hol-recur-box { background: var(--brand-cyan); border-color: var(--brand-cyan); }
+.hol-recur input:checked + .hol-recur-box svg { opacity: 1; }
+.hol-recur input:focus-visible + .hol-recur-box { outline: 2px solid var(--brand-cyan); outline-offset: 2px; }
+.hol-addbar-actions { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+
+/* ── Table ── */
+.hol-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-content);
+}
+.hol-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: var(--text-base);
+}
+.hol-c-date { width: 17%; }
+.hol-c-day { width: 14%; }
+.hol-c-type { width: 18%; }
+.hol-c-act { width: 120px; }
+
+.hol-table thead th {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--bg-content);
+  text-align: left;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--text-muted); font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  padding: 11px var(--space-4);
+  white-space: nowrap;
+}
+.hol-table tbody td {
+  padding: 9px var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+  color: var(--text-secondary);
+}
+.hol-table tbody tr:hover td { background: var(--card-inset); }
+.hol-table tbody tr.hol-zebra td { background: color-mix(in srgb, transparent 98%, var(--text-primary)); }
+.hol-table tbody tr.hol-zebra:hover td { background: var(--card-inset); }
+
+.hol-table td.hol-date { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-primary); white-space: nowrap; }
+.hol-table td.hol-day { font-family: var(--font-mono); font-size: var(--text-sm); }
+.hol-table td.hol-day.hol-wknd { color: var(--color-high); }
+.hol-wknd-tag { font-size: 9px; letter-spacing: 0.03em; }
+.hol-table td.hol-name { color: var(--text-primary); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.hol-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.05em;
+  text-transform: uppercase; border-radius: var(--radius-sm); padding: 2px 7px;
+}
+.hol-badge-ann {
+  color: var(--brand-cyan);
+  background: color-mix(in srgb, transparent 90%, var(--brand-cyan));
+  border: 1px solid color-mix(in srgb, transparent 78%, var(--brand-cyan));
+}
+.hol-badge-one { color: var(--text-muted); border: 1px solid var(--border-soft); }
+
+.hol-table td.hol-act { text-align: right; padding-right: var(--space-3); }
+.hol-del.ui-button {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.03em;
+  color: var(--text-muted); background: transparent; border: none;
+  height: auto; min-height: 0; padding: 4px 6px;
+  opacity: 0; transition: opacity var(--duration-fast) ease, color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+.hol-table tbody tr:hover .hol-del.ui-button { opacity: 1; }
+.hol-del.ui-button:hover { color: var(--color-critical); background: var(--fill-critical); }
+@media (hover: none) and (pointer: coarse) {
+  .hol-del.ui-button { opacity: 1; }
+}
+
+.hol-table tbody tr.hol-sect td {
+  background: var(--bg-content);
+  border-bottom: 1px solid var(--border);
+  padding: 14px var(--space-4) 7px;
+}
+.hol-table tbody tr.hol-sect:hover td { background: var(--bg-content); }
+.hol-sect-h { display: flex; align-items: center; gap: 9px; }
+.hol-flag { font-size: 16px; line-height: 1; }
+.hol-sect-nm { font-family: var(--font-display); font-size: var(--text-md); font-weight: 600; color: var(--text-primary); letter-spacing: -0.01em; }
+.hol-sect-code { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); }
+.hol-sect-cnt {
+  margin-left: 2px; font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
+  background: var(--bg-elevated); border-radius: var(--radius-pill); padding: 1px 8px;
+}
+
+.hol-empty { padding: var(--space-7); text-align: center; color: var(--text-muted); font-size: var(--text-sm); }
+
+.hol-infobody p { font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; margin: 0 0 var(--space-3); }
+.hol-infobody p strong { color: var(--brand-cyan); font-weight: 600; }
+.hol-mono { font-family: var(--font-mono); font-size: 11px; }
+.hol-info-foot {
+  font-size: 11px; color: var(--text-muted); font-style: italic;
+  border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); margin-top: var(--space-1) !important;
+}
+.hol-info-foot .hol-mono { font-style: normal; }
+
+.hol-sk { border-radius: var(--radius-sm); background: var(--bg-elevated); }
+.hol-sk--shimmer {
+  background: linear-gradient(100deg, var(--bg-elevated) 30%, var(--bg-tertiary) 50%, var(--bg-elevated) 70%);
+  background-size: 200% 100%; animation: hol-sh 1.6s linear infinite;
+}
+@keyframes hol-sh { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.hol-sk-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); flex-shrink: 0; }
+.hol-sk-htitle { display: flex; align-items: center; gap: var(--space-3); }
+.hol-sk-title { width: 180px; height: 30px; border-radius: var(--radius-md); }
+.hol-sk-info { width: 22px; height: 22px; border-radius: var(--radius-pill); }
+.hol-sk-add { width: 120px; height: 32px; border-radius: var(--radius-md); }
+.hol-sk-filters { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); flex-shrink: 0; }
+.hol-sk-f { height: 32px; border-radius: var(--radius-md); }
+.hol-sk-meta { margin-left: auto; width: 160px; height: 12px; }
+.hol-sk-table { flex: 1; min-height: 0; border: 1px solid var(--border-soft); border-radius: var(--radius-lg); overflow: hidden; background: var(--bg-content); }
+.hol-sk-thead { display: flex; height: 42px; align-items: center; gap: var(--space-4); padding: 0 var(--space-4); border-bottom: 1px solid var(--border); }
+.hol-sk-th { height: 9px; border-radius: 3px; }
+.hol-sk-sect { display: flex; align-items: center; gap: 9px; height: 44px; padding: 0 var(--space-4); border-bottom: 1px solid var(--border); }
+.hol-sk-sflag { width: 16px; height: 16px; border-radius: 3px; }
+.hol-sk-snm { width: 130px; height: 14px; border-radius: 3px; }
+.hol-sk-row { display: flex; align-items: center; gap: var(--space-4); height: 42px; padding: 0 var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.hol-sk-row.z { background: color-mix(in srgb, transparent 98%, var(--text-primary)); }
+.hol-sk-cell { height: 11px; border-radius: 3px; }
+.hol-sk-badge { height: 18px; border-radius: var(--radius-sm); }

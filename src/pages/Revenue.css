@@ -1,0 +1,256 @@
+/* ═══════════ Revenue — Vercel/Geist refresh ═══════════
+   Geist restraint: flat surfaces (no card boxes), hairline framing, hierarchy
+   through size + space. The hero is a flat stacked-area chart on true-black; a
+   flat KPI row and a full-width breakdown table sit below. All rules scoped
+   under .rv; token-only colors (CI lint scans this file). The revenue category
+   hues (hard/at-risk/unconfirmed) have no token — they come inline from
+   CAT_COLORS in the .tsx, same pattern as RATING_COLORS on Engineer Detail. */
+
+.rv { max-width: 1400px; margin: 0 auto; }
+
+/* ───────── Header: title + Monthly/Quarterly underline tabs ─────────
+   The tabs reuse the shared .view-tab pattern (index.css) for parity with
+   Resourcing's By Engineer / By Project rail. */
+.rv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.rv-head-tabs { display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
+.rv-tabs { display: inline-flex; gap: var(--space-5); border-bottom: 1px solid var(--border-soft); }
+.rv-titlewrap { display: flex; align-items: center; gap: var(--space-2); }
+
+/* Circular "ⓘ" info button + calc-dialog blocks — Capacity parity (.cap-info /
+   .cap-calc-*): the design system has no modal-opening info primitive, so both
+   pages build it from the <Button variant="ghost"> primitive. */
+.rv-info.ui-button {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.rv-info.ui-button:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.rv-calc-grp { margin-bottom: var(--space-4); }
+.rv-calc-grp:last-child { margin-bottom: 0; }
+.rv-calc-lbl {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-2);
+}
+.rv-calc {
+  background: var(--bg-card-alt);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.rv-calc-foot { font-style: italic; color: var(--text-muted); font-size: var(--text-sm); margin-top: var(--space-3); }
+
+/* ───────── Filter bar — "Quiet Rails" ghost controls (Resourcing parity) ───────── */
+.rv-filters {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+.rv-filters-spacer { margin-left: auto; }
+
+/* ───────── KPI summary — flat stat row, no card box ───────── */
+.rv-kpis {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+.rv-kpi { flex: 1; min-width: 0; padding: 0 var(--space-5); border-left: 1px solid var(--border-subtle); }
+.rv-kpi:first-child { border-left: none; padding-left: 0; }
+.rv-kpi-l {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.rv-kpi-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); flex-shrink: 0; }
+.rv-kpi-v {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: var(--space-2);
+  letter-spacing: -0.01em;
+}
+
+/* ───────── Section headers (mirror .ed-sect) ───────── */
+.rv-sect { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); margin: 0 0 var(--space-3); }
+.rv-sect:not(:first-of-type) { margin-top: var(--space-6); }
+.rv-sect h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.rv-cnt { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-muted); font-weight: 400; }
+
+/* ───────── Legend (static inline key) ───────── */
+.rv-legend { display: flex; gap: var(--space-4); align-items: center; }
+.rv-legend-i { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); }
+.rv-legend-sw { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* ───────── Chart — flat on true-black; scrolls only when needed ───────── */
+.rv-chart { position: relative; padding-top: var(--space-4); }
+.rv-chart-scroll { overflow-x: auto; overflow-y: hidden; }
+.rv-chart svg { display: block; }
+.rv-axis { fill: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.rv-xlabel { fill: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+.rv-empty {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-7);
+  text-align: center;
+  color: var(--text-muted);
+}
+.rv-empty span { font-size: var(--text-sm); }
+
+/* Tooltip — own layer (no SVG repaint on hover; Geist popover idiom) */
+.rv-tip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 30;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  min-width: 190px;
+  box-shadow: 0 8px 24px color-mix(in srgb, transparent 55%, var(--bg-body));
+}
+.rv-tip-t { font-family: var(--font-display); font-weight: 600; color: var(--text-primary); font-size: var(--text-sm); margin-bottom: var(--space-2); }
+.rv-tip-r { display: flex; align-items: center; gap: var(--space-2); justify-content: space-between; margin: 3px 0; font-size: var(--text-sm); }
+.rv-tip-lab { display: flex; align-items: center; gap: var(--space-2); color: var(--text-secondary); }
+.rv-tip-sw { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.rv-tip-num { font-family: var(--font-mono); color: var(--text-primary); }
+.rv-tip-tot { border-top: 1px solid var(--border-subtle); margin-top: var(--space-2); padding-top: var(--space-2); font-weight: 600; }
+.rv-tip-hint { color: var(--text-muted); font-size: 10px; margin-top: var(--space-2); font-family: var(--font-mono); }
+
+/* ───────── Breakdown table (Projects/ProjectDetail/.ed parity) ───────── */
+.rv-tbl-wrap { overflow: auto; border: 1px solid var(--border-soft); border-radius: var(--radius-lg); }
+.rv table { width: 100%; border-collapse: collapse; }
+.rv thead th {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  white-space: nowrap;
+  background: var(--bg-content);
+  border-bottom: 1px solid var(--border-soft);
+  position: sticky;
+  top: 0;
+  /* keep the pinned header above scrolling rows (their zebra/hover backgrounds
+     otherwise paint over a sticky header that has no stacking context) */
+  z-index: 2;
+}
+.rv th.num, .rv td.num { text-align: right; }
+/* 5 numeric/label columns share width evenly; the Mix column absorbs the slack
+   so the period label sits tight-left and numbers never clump with a void. */
+.rv th.rv-mixhead, .rv td.rv-mix { width: 100%; }
+.rv tbody td {
+  padding: 0 var(--space-3);
+  height: 42px;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.rv tbody tr:last-child td { border-bottom: none; }
+.rv tbody tr { transition: background var(--duration-fast) var(--ease-out); }
+.rv tbody tr:nth-child(2n) td { background: var(--card-inset); }
+.rv tbody tr:hover td { background: var(--bg-card); }
+.rv td.cap, .rv th.cap { font-family: var(--font-display); color: var(--text-primary); }
+.rv td.mono { font-family: var(--font-mono); }
+.rv-drill { cursor: pointer; }
+.rv-drill:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* Total row reads white — the selector outweighs `.rv tbody td` (0,1,2) so the
+   label + amount aren't dragged to the muted body color; inline-colored category
+   subtotals still win via their inline style. */
+.rv tbody tr.rv-tot td { border-top: 2px solid var(--border); border-bottom: none; font-weight: 700; color: var(--text-primary); background: transparent !important; }
+
+/* Drilldown <Dialog>: the shared body has padding:var(--space-5), so a sticky
+   top:0 header leaves a padding strip above it where scrolling rows peek through.
+   Zero the body's TOP padding (header pins flush, no strip) and move the
+   breathing-room gap to the non-scrolling title via the header's padding-bottom.
+   Scoped via :has(.rv-drilltbl) so other Dialog usages are untouched, and
+   Revenue.css only loads on this page. (base thead th = sticky; top:0; z-index:2) */
+.ui-dialog__body:has(> .rv-drilltbl) { padding-top: 0; }
+.ui-dialog__header:has(~ .ui-dialog__body > .rv-drilltbl) { padding-bottom: var(--space-4); }
+
+/* Mix column — plain proportion ticks (3 softened segments, no track/border) */
+.rv-tick { display: flex; gap: var(--space-1); height: 5px; width: 100%; overflow: hidden; }
+.rv-tick span { height: 100%; border-radius: var(--radius-pill); flex: none; }
+
+/* ───────── Drilldown contents (rendered inside the shared <Dialog> primitive,
+   which owns the overlay/panel chrome + spring entrance) ───────── */
+.rv-plink { color: var(--brand-cyan); text-decoration: none; }
+.rv-plink:hover { text-decoration: underline; text-underline-offset: 2px; }
+.rv-dempty { color: var(--text-muted); text-align: center; padding: var(--space-6) 0; }
+/* Amount + Total read in primary white (not the muted body color) */
+.rv td.rv-amt { color: var(--text-primary); }
+/* Total is the emphasis column — its header reads white too (others stay muted) */
+.rv th.rv-th-total { color: var(--text-primary); }
+.rv td.grow { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rv th.grow { width: 100%; }
+
+/* ───────── Loading skeleton (.sk/.sk--shimmer global in ui.css) ───────── */
+.rvsk { max-width: 1400px; margin: 0 auto; }
+.rvsk-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-6); }
+.rvsk-tool { height: 32px; width: 92px; border-radius: var(--radius-md); }
+.rvsk-tool.sm { width: 64px; }
+.rvsk-kpis { display: flex; border-bottom: 1px solid var(--border-subtle); padding-bottom: var(--space-5); margin-bottom: var(--space-6); }
+.rvsk-kpi { flex: 1; padding: 0 var(--space-5); border-left: 1px solid var(--border-subtle); }
+.rvsk-kpi:first-child { border-left: none; padding-left: 0; }
+.rvsk-kpi-l { width: 92px; height: 11px; margin-bottom: var(--space-3); }
+.rvsk-kpi-v { width: 128px; height: 24px; }
+.rvsk-secttl { width: 200px; height: 18px; margin-bottom: var(--space-4); }
+.rvsk-chart { display: flex; align-items: flex-end; gap: 18px; height: 300px; padding-left: 48px; }
+.rvsk-bar { flex: 1; border-radius: 3px 3px 0 0; }
+.rvsk-secttl2 { width: 160px; height: 18px; margin: var(--space-6) 0 var(--space-3); }
+.rvsk-table { border: 1px solid var(--border-soft); border-radius: var(--radius-lg); overflow: hidden; }
+.rvsk-trow { display: flex; align-items: center; gap: var(--space-5); height: 42px; padding: 0 var(--space-3); border-bottom: 1px solid var(--border-subtle); }
+.rvsk-trow:last-child { border-bottom: none; }
+.rvsk-trow--head { background: var(--bg-content); height: 34px; }
+.rvsk-c { height: 11px; }
+.rvsk-c.grow { flex: 1; }
+.rvsk-c.n { width: 120px; margin-left: auto; }

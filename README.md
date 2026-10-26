@@ -16,6 +16,8 @@ PTO comes from, where task checklists live).
 
 ## Screenshots
 
+The interface is the October 2026 shell: accordion sidebar, command palette (Ctrl+K, or G then a letter), and Geist type, in the forest and gold palette. The PNGs below are the previous capture. Replace the files in `docs/screenshots/` after a fresh local demo.
+
 Resourcing — week-by-week consultant allocations on a timeline grid:
 
 ![Resourcing](docs/screenshots/resourcing.png)

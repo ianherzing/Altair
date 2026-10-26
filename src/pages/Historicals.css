@@ -1,0 +1,205 @@
+/* ═══════════ Historicals — Vercel/Geist refresh ═══════════
+   Flat surfaces, hairline framing, hierarchy through size + space. Altair shows
+   historical revenue only: a hero by-year chart AND the records table (no
+   Chart/Table toggle, no hours mode). All rules scoped under .hist; token-only
+   colors. Revenue bars use var(--brand-red) via inline style, not raw hex. */
+
+.hist { max-width: 1400px; margin: 0 auto; }
+
+/* ───────── Header: title + meta ───────── */
+.hist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+
+/* ───────── Filter bar — "Quiet Rails" ghost controls (Resourcing parity) ───────── */
+.hist-filters {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+.hist-filters-spacer { margin-left: auto; }
+/* Ghost search input — hairline border, hugs the Quiet-Rails aesthetic */
+.hist-search {
+  height: 32px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  width: 180px;
+  /* no border-color transition: it can't be GPU-composited (compositeFailed in
+     profiling) so it forces a main-thread repaint of the focused input's layer */
+}
+.hist-search::placeholder { color: var(--text-muted); }
+.hist-search:focus { outline: none; border-color: var(--border-focus); }
+
+/* ───────── KPI summary — flat stat row, no card box ───────── */
+.hist-kpis {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+.hist-kpi { flex: 1; min-width: 0; padding: 0 var(--space-5); border-left: 1px solid var(--border-subtle); }
+.hist-kpi:first-child { border-left: none; padding-left: 0; }
+.hist-kpi-l {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.hist-kpi-v {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: var(--space-2);
+  letter-spacing: -0.01em;
+}
+.hist-kpi-v.accent { color: var(--brand-red); }
+
+/* ───────── Section headers (mirror .rv-sect / .ed-sect) ───────── */
+.hist-sect { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); margin: 0 0 var(--space-3); }
+.hist-sect.gap { margin-top: var(--space-6); }
+.hist-sect h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.hist-cnt { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-muted); font-weight: 400; }
+
+/* ───────── Chart — scrolls only when year buckets overflow ───────── */
+.hist-chart { position: relative; padding-top: var(--space-4); }
+.hist-chart-scroll { overflow-x: auto; overflow-y: hidden; }
+.hist-chart svg { display: block; }
+.hist-axis { fill: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.hist-xlabel { fill: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
+.hist-vlabel { fill: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; }
+.hist-empty {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-7);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* Tooltip — own layer (anchored on mouseEnter; no SVG repaint on hover) */
+.hist-tip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 30;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  min-width: 190px;
+  box-shadow: 0 8px 24px color-mix(in srgb, transparent 55%, var(--bg-body));
+}
+.hist-tip-t { font-family: var(--font-display); font-weight: 600; color: var(--text-primary); font-size: var(--text-sm); margin-bottom: var(--space-2); }
+.hist-tip-r { display: flex; align-items: center; gap: var(--space-2); justify-content: space-between; margin: 3px 0; font-size: var(--text-sm); }
+.hist-tip-lab { display: flex; align-items: center; gap: var(--space-2); color: var(--text-secondary); }
+.hist-tip-sw { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.hist-tip-num { font-family: var(--font-mono); color: var(--text-primary); }
+.hist-tip-tot { border-top: 1px solid var(--border-subtle); margin-top: var(--space-2); padding-top: var(--space-2); font-weight: 600; }
+
+/* ───────── Records table (full-width; Projects/.rv parity) ───────── */
+.hist-tbl-wrap { overflow: auto; max-height: 560px; border: 1px solid var(--border-soft); border-radius: var(--radius-lg); }
+/* table-layout: fixed bounds the table to the container width — without it,
+   auto layout sizes columns to the widest cell across ALL rows, which can blow
+   the table's intrinsic width out to thousands of px; the sticky <th> is then
+   promoted to a composited layer that size (a ~96Mpx layer in profiling) and
+   the GPU re-rasterizes it every frame → severe scroll/typing jank. Fixed
+   layout also makes per-keystroke relayout O(1) instead of O(rows). Column
+   widths come from the <colgroup> in each table; cells clip+ellipsize. */
+.hist table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.hist thead th {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  white-space: nowrap;
+  background: var(--bg-content);
+  border-bottom: 1px solid var(--border-soft);
+  position: sticky;
+  top: 0;
+  /* keep the pinned header above scrolling rows (their zebra/hover backgrounds
+     otherwise paint over a sticky header that has no stacking context) */
+  z-index: 2;
+  cursor: pointer;
+  user-select: none;
+}
+.hist thead th:hover { color: var(--text-secondary); }
+.hist th.num, .hist td.num { text-align: right; }
+/* Amount/measure column reads white (emphasis); its header too */
+.hist th.th-amt { color: var(--text-primary); }
+.hist td.amt { color: var(--text-primary); font-family: var(--font-mono); text-align: right; }
+.hist tbody td {
+  padding: 0 var(--space-3);
+  height: 40px;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  /* fixed layout: clip overflowing cell content to the column width */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hist tbody tr:last-child td { border-bottom: none; }
+.hist tbody tr { transition: background var(--duration-fast) var(--ease-out); }
+/* zebra by a class (not :nth-child) — the table is row-windowed, so a row's DOM
+   child index isn't its absolute index; the renderer tags odd rows .zebra */
+.hist tbody tr.zebra td { background: var(--card-inset); }
+.hist tbody tr:hover:not(.hist-spacer) td { background: var(--bg-card); }
+/* spacer rows reserve off-screen scroll height (height set inline); no chrome */
+.hist tbody tr.hist-spacer td { padding: 0; border: none; background: transparent; }
+.hist td.cap, .hist th.cap { font-family: var(--font-display); color: var(--text-primary); }
+.hist td.mono { font-family: var(--font-mono); }
+/* the long column (Project) takes the remaining width via the <colgroup>;
+   ellipsis is inherited from .hist tbody td */
+.hist td.grow, .hist th.grow { overflow: hidden; text-overflow: ellipsis; }
+
+/* ───────── Loading skeleton (.sk/.sk--shimmer global in ui.css) ───────── */
+.histsk { max-width: 1400px; margin: 0 auto; }
+.histsk-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-6); }
+.histsk-tool { height: 32px; width: 84px; border-radius: var(--radius-md); }
+.histsk-tool.sm { width: 64px; }
+.histsk-kpis { display: flex; border-bottom: 1px solid var(--border-subtle); padding-bottom: var(--space-5); margin-bottom: var(--space-6); }
+.histsk-kpi { flex: 1; padding: 0 var(--space-5); border-left: 1px solid var(--border-subtle); }
+.histsk-kpi:first-child { border-left: none; padding-left: 0; }
+.histsk-kpi-l { width: 92px; height: 11px; margin-bottom: var(--space-3); }
+.histsk-kpi-v { width: 120px; height: 24px; }
+.histsk-secttl { width: 180px; height: 18px; margin-bottom: var(--space-4); }
+.histsk-chart { display: flex; align-items: flex-end; justify-content: center; gap: 64px; height: 300px; padding-left: 48px; }
+.histsk-bar { width: 56px; border-radius: 3px 3px 0 0; }
+.histsk-secttl2 { width: 150px; height: 18px; margin: var(--space-6) 0 var(--space-3); }
+.histsk-table { border: 1px solid var(--border-soft); border-radius: var(--radius-lg); overflow: hidden; }
+.histsk-trow { display: flex; align-items: center; gap: var(--space-5); height: 40px; padding: 0 var(--space-3); border-bottom: 1px solid var(--border-subtle); }
+.histsk-trow:last-child { border-bottom: none; }
+.histsk-trow--head { background: var(--bg-content); height: 34px; }
+.histsk-c { height: 11px; width: 70px; }
+.histsk-c.grow { flex: 1; }
+.histsk-c.n { width: 90px; margin-left: auto; }
