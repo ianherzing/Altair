@@ -1,0 +1,230 @@
+/* Permissions — Vercel/Geist refresh (scoped .perm).
+   Users/roles admin only (no API keys). Flat KPI row, Quiet-Rails filter,
+   inline add bar, flat table, shared Dialog. All colors are var(--token)
+   except the neon role-identity ramp (ds-allow — four Altair roles). The ramp
+   is declared on BOTH .perm and .perm-infodlg so it resolves inside the
+   portaled info Dialog too. */
+
+.perm,
+.perm-infodlg {
+  --perm-admin: #16E0F5; /* ds-allow: neon role-identity ramp (PMO Admin) */
+  --perm-lead: #B98CFF;  /* ds-allow: neon role-identity ramp (Leadership) */
+  --perm-fin: #FFC24B;   /* ds-allow: neon role-identity ramp (Finance Viewer) */
+  --perm-con: #3CE585;   /* ds-allow: neon role-identity ramp (Consultant) */
+}
+
+.perm {
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 4rem);
+}
+
+.perm-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  flex-shrink: 0;
+}
+.perm-titlewrap { display: flex; align-items: center; gap: var(--space-3); }
+.perm-info.ui-button {
+  width: 22px; height: 22px; padding: 0; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-soft); color: var(--text-muted);
+  font-style: italic; font-family: Georgia, 'Times New Roman', serif; font-weight: 700; line-height: 1;
+}
+.perm-info.ui-button:hover { border-color: var(--border-strong); color: var(--text-secondary); }
+.perm-sub { color: var(--text-muted); font-size: var(--text-sm); margin-top: 4px; max-width: 560px; }
+.perm-add-plus { font-family: var(--font-mono); color: var(--text-muted); margin-right: 4px; }
+.perm-addbtn.ui-button:hover .perm-add-plus { color: var(--text-secondary); }
+
+.perm-kpis {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-4);
+  flex-shrink: 0;
+}
+.perm-kpi {
+  flex: 1;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-right: 1px solid var(--border-subtle);
+}
+.perm-kpi:last-child { border-right: none; }
+.perm-kpi-label {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
+}
+.perm-kpi-value {
+  font-family: var(--font-mono); font-size: var(--text-2xl); font-weight: 500;
+  color: var(--text-primary); line-height: 1; font-variant-numeric: tabular-nums;
+}
+.perm-kpi-sub { font-size: var(--text-xs); color: var(--text-muted); margin-top: 6px; }
+
+.perm-dot { width: 8px; height: 8px; border-radius: var(--radius-pill); flex: 0 0 auto; }
+.perm-dot--admin { background: var(--perm-admin); box-shadow: 0 0 6px var(--perm-admin); }
+.perm-dot--lead { background: var(--perm-lead); box-shadow: 0 0 6px var(--perm-lead); }
+.perm-dot--fin { background: var(--perm-fin); box-shadow: 0 0 6px var(--perm-fin); }
+.perm-dot--con { background: var(--perm-con); box-shadow: 0 0 6px var(--perm-con); }
+
+.perm-filters {
+  display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;
+  margin-bottom: var(--space-4); flex-shrink: 0; position: relative; z-index: 20;
+}
+.perm-meta {
+  margin-left: auto;
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+  display: flex; align-items: center; gap: 6px;
+}
+.perm-meta b { color: var(--text-secondary); font-weight: 600; }
+.perm-tdiv { width: 1px; height: 16px; background: var(--border-soft); margin: 0 4px; }
+
+.perm-addbar {
+  display: flex; align-items: flex-end; gap: var(--space-3); flex-wrap: wrap;
+  border: 1px solid var(--border-soft); border-radius: var(--radius-lg);
+  background: var(--card-inset); padding: 14px var(--space-4);
+  margin-bottom: var(--space-4); flex-shrink: 0;
+  animation: perm-slidedown 160ms var(--ease-out);
+}
+@keyframes perm-slidedown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.perm-fld { display: flex; flex-direction: column; gap: 5px; }
+.perm-fld-name { flex: 1; min-width: 200px; }
+.perm-fld-email { flex: 1; min-width: 220px; }
+.perm-fld-role { width: 200px; }
+.perm-flabel {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.perm-addbar-actions { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+
+.perm-wrap {
+  flex: 1; min-height: 0; overflow: auto;
+  border: 1px solid var(--border-soft); border-radius: var(--radius-lg);
+  background: var(--bg-content);
+}
+.perm-table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  table-layout: fixed; font-size: var(--text-base);
+}
+.perm-c-email { width: 32%; }
+.perm-c-role { width: 218px; }
+.perm-c-added { width: 120px; }
+.perm-c-act { width: 96px; }
+
+.perm-table thead th {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--bg-content); text-align: left;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--text-muted); font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  padding: 11px var(--space-4); white-space: nowrap;
+}
+.perm-table tbody td {
+  padding: 10px var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle; color: var(--text-secondary);
+}
+.perm-table tbody tr:hover td { background: var(--card-inset); }
+.perm-table tbody tr.perm-zebra td { background: color-mix(in srgb, transparent 98%, var(--text-primary)); }
+.perm-table tbody tr.perm-zebra:hover td { background: var(--card-inset); }
+
+.perm-namecell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.perm-avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; flex-shrink: 0; border-radius: var(--radius-pill);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  color: var(--text-primary); background: var(--bg-elevated); border: 1px solid var(--border-soft);
+}
+.perm-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-weight: 500; }
+.perm-table td.perm-email { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.perm-table td.perm-added { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-muted); white-space: nowrap; }
+
+.perm-role .ui-multiselect { display: inline-block; }
+.perm-role .ui-multiselect__trigger.kanban-ghost {
+  height: 28px; padding: 0 10px; border-radius: var(--radius-pill);
+  background: var(--bg-elevated); border: 1px solid var(--border-soft);
+}
+.perm-role .ui-multiselect__trigger.kanban-ghost:hover { border-color: var(--border-strong); background: var(--bg-elevated); }
+.perm-rolepill { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; max-width: 100%; color: var(--text-primary); font-weight: 500; }
+.perm-rolepill-lab { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.perm-rolepill-chev { font-size: 7px; color: var(--text-muted); margin-left: 2px; flex-shrink: 0; }
+
+.perm-table td.perm-act { text-align: right; padding-right: var(--space-3); }
+.perm-del.ui-button {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.03em;
+  height: auto; min-height: 0; padding: 4px 7px;
+  opacity: 0; transition: opacity var(--duration-fast) ease;
+}
+.perm-table tbody tr:hover .perm-del.ui-button { opacity: 1; }
+@media (hover: none) and (pointer: coarse) { .perm-del.ui-button { opacity: 1; } }
+
+.perm-empty { padding: var(--space-7); text-align: center; color: var(--text-muted); font-size: var(--text-sm); }
+
+.perm-info-p { font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; margin: 0 0 var(--space-4); }
+.perm-rolecards { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.perm-rolecard {
+  border: 1px solid var(--border-subtle); border-left-width: 3px;
+  border-radius: var(--radius-md); padding: 10px 12px; background: var(--card-inset);
+}
+.perm-rolecard--admin { border-left-color: var(--perm-admin); }
+.perm-rolecard--lead { border-left-color: var(--perm-lead); }
+.perm-rolecard--fin { border-left-color: var(--perm-fin); }
+.perm-rolecard--con { border-left-color: var(--perm-con); }
+.perm-rolecard-h { font-weight: 600; font-size: var(--text-sm); margin-bottom: 3px; color: var(--text-primary); }
+.perm-rolecard--admin .perm-rolecard-h { color: var(--perm-admin); }
+.perm-rolecard--lead .perm-rolecard-h { color: var(--perm-lead); }
+.perm-rolecard--fin .perm-rolecard-h { color: var(--perm-fin); }
+.perm-rolecard--con .perm-rolecard-h { color: var(--perm-con); }
+.perm-rolecard-d { font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.5; margin-bottom: 4px; }
+.perm-rolecard-p { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); }
+
+.perm-mx-t { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+.perm-mx { width: 100%; border-collapse: collapse; font-size: var(--text-xs); }
+.perm-mx th { text-align: center; padding: 6px 4px; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 500; }
+.perm-mx th.perm-mx-ft { text-align: left; }
+.perm-mx-rolehead--admin { color: var(--perm-admin); }
+.perm-mx-rolehead--lead { color: var(--perm-lead); }
+.perm-mx-rolehead--fin { color: var(--perm-fin); }
+.perm-mx-rolehead--con { color: var(--perm-con); }
+.perm-mx td { padding: 6px 4px; text-align: center; border-bottom: 1px solid var(--border-subtle); }
+.perm-mx td.perm-mx-ft { text-align: left; color: var(--text-primary); font-weight: 500; }
+.perm-mx-rw { color: var(--perm-admin); font-weight: 600; font-family: var(--font-mono); font-size: 10px; }
+.perm-mx-ro { color: var(--perm-con); font-family: var(--font-mono); font-size: 10px; }
+.perm-mx-no { color: var(--text-muted); }
+
+.perm-info-foot {
+  font-size: 11px; color: var(--text-muted); font-style: italic;
+  border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); margin: var(--space-4) 0 0;
+}
+
+.perm-sk { border-radius: var(--radius-sm); background: var(--bg-elevated); }
+.perm-sk--shimmer {
+  background: linear-gradient(100deg, var(--bg-elevated) 30%, var(--bg-tertiary) 50%, var(--bg-elevated) 70%);
+  background-size: 200% 100%; animation: perm-sh 1.6s linear infinite;
+}
+@keyframes perm-sh { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.perm-sk-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-4); flex-shrink: 0; }
+.perm-sk-htitle { display: flex; align-items: center; gap: var(--space-3); }
+.perm-sk-sub { width: 360px; height: 11px; border-radius: 3px; margin-top: 10px; }
+.perm-sk-info { width: 22px; height: 22px; border-radius: var(--radius-pill); }
+.perm-sk-add { width: 110px; height: 32px; border-radius: var(--radius-md); }
+.perm-sk-kpis { display: flex; border-bottom: 1px solid var(--border); margin-bottom: var(--space-4); }
+.perm-sk-kpi { flex: 1; padding: var(--space-3) var(--space-4) var(--space-4); border-right: 1px solid var(--border-subtle); }
+.perm-sk-kpi:last-child { border-right: none; }
+.perm-sk-kl { width: 90px; height: 9px; border-radius: 3px; margin-bottom: 10px; }
+.perm-sk-kv { width: 40px; height: 26px; border-radius: 4px; margin-bottom: 8px; }
+.perm-sk-ks { width: 60px; height: 9px; border-radius: 3px; }
+.perm-sk-filters { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); }
+.perm-sk-f { height: 32px; border-radius: var(--radius-md); }
+.perm-sk-meta { margin-left: auto; width: 180px; height: 12px; }
+.perm-sk-table { flex: 1; min-height: 0; border: 1px solid var(--border-soft); border-radius: var(--radius-lg); overflow: hidden; background: var(--bg-content); }
+.perm-sk-thead { display: flex; height: 42px; align-items: center; gap: var(--space-4); padding: 0 var(--space-4); border-bottom: 1px solid var(--border); }
+.perm-sk-th { height: 9px; border-radius: 3px; }
+.perm-sk-row { display: flex; align-items: center; gap: var(--space-4); height: 46px; padding: 0 var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.perm-sk-row.z { background: color-mix(in srgb, transparent 98%, var(--text-primary)); }
+.perm-sk-av { width: 26px; height: 26px; border-radius: var(--radius-pill); flex-shrink: 0; }
+.perm-sk-cell { height: 11px; border-radius: 3px; }
+.perm-sk-pill { height: 28px; border-radius: var(--radius-pill); }

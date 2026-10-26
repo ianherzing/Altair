@@ -24,7 +24,7 @@
 
 ## Conventions
 
-- **CSS:** Inline styles via CSS variables (`var(--bg-card)`, `var(--text-primary)`, etc.). No CSS frameworks. Deep-forest dark palette — override the tokens in `src/index.css` to rebrand. Design tokens (type scale, spacing, radius, motion, focus ring, light-theme scaffold) and the primitives in `src/components/ui/` (Card, Section, Stat, Button, Field/Input, Badge, StatusDot, DataTable) are documented in `docs/design-system.md`. Redesigned pages use primitives + tokens; no hardcoded hex.
+- **CSS:** CSS variables (`var(--bg-card)`, `var(--text-primary)`, etc.). No CSS frameworks. Deep-forest palette, gold accent — override the tokens in `src/index.css` to rebrand. App-wide type is Geist. Navigation order is `src/lib/navStructure.ts`. Primitives live in `src/components/ui/` and are documented in `docs/design-system.md`. Redesigned pages use primitives + tokens; no hardcoded hex.
 - **State:** React `useState` / `useMemo`. No state management library.
 - **Data access:** Pages call `src/lib/api.ts` helpers. **Pages must not call `supabase.from()` or `supabase.rpc()` directly** — the `authz-lint.yml` CI check enforces this.
 - **API handlers:** Always wrap in `withAuth()` (JWT-authed) or `withApiKeyAuth()` (x-api-key-authed). Mechanical validate → RPC → audit handlers use the `makeRpcHandler()` factory in `api/_lib/make-rpc-handler.ts` (which wraps `withAuth` for you). Missing wrapper = CI failure.

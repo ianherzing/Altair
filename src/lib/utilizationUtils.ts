@@ -8,7 +8,7 @@ export function utilColor(pct: number): string {
   if (pct >= 70) return '#7CB342'
   if (pct >= 50) return '#F0C42B'
   if (pct >= 30) return '#F0642B'
-  return '#E63948'
+  return '#B65540'
 }
 
 /** Cell background with opacity for future vs. past months */

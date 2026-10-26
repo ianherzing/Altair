@@ -2,10 +2,10 @@
 /*  Margin-specific pure helpers                                       */
 /* ------------------------------------------------------------------ */
 
-export const COLOR_REVENUE = '#E63948'
-export const COLOR_COST = '#F0642B'
-export const COLOR_MARGIN_POS = '#28A36A'
-export const COLOR_MARGIN_NEG = '#E63948'
+export const COLOR_REVENUE = '#D6B25E'
+export const COLOR_COST = '#C9654F'
+export const COLOR_MARGIN_POS = '#3DDC84'
+export const COLOR_MARGIN_NEG = '#B65540'
 
 /** Resolve cost rate for an consultant at a given YYYY-MM month key. */
 export function getCostRateForMonth(

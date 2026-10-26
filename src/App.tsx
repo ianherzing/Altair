@@ -1,18 +1,21 @@
-import { useState, lazy, Suspense } from 'react'
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
-import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { AuthProvider, useAuth } from './lib/auth'
 import { canAccess } from './lib/permissions'
+import type { UserRole } from './types/database'
+import { buildNavCommands, matchShortcut } from './lib/commandPalette'
+import { NAV_STRUCTURE } from './lib/navStructure'
+import { CommandPalette } from './components/CommandPalette'
+import { PageSkeleton } from './components/PageSkeleton'
+import { AnimatedText, Button } from './components/ui'
+import { PATH_ICONS, GROUP_ICONS } from './components/navIcons'
+import { ChevronLeft, ChevronRight, Logout } from './components/icons/geist'
 import { Login } from './pages/Login'
 import { AccessDenied } from './pages/AccessDenied'
-import {
-  CalendarDays, ClipboardList, Archive, BarChart3, Users, DollarSign,
-  TrendingUp, PieChart, Activity, Target, Brain, Palmtree, Lock, RefreshCw,
-  Shield, LayoutGrid, GitBranch,
-} from 'lucide-react'
 import './App.css'
 
-// Lazy-load page components for code splitting
 const Resourcing = lazy(() => import('./pages/Resourcing').then(m => ({ default: m.Resourcing })))
 const Projects = lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })))
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail').then(m => ({ default: m.ProjectDetail })))
@@ -33,176 +36,282 @@ const Utilization = lazy(() => import('./pages/Utilization').then(m => ({ defaul
 const Security = lazy(() => import('./pages/Security').then(m => ({ default: m.Security })))
 const MentorTree = lazy(() => import('./pages/MentorTree').then(m => ({ default: m.MentorTree })))
 
-const ICON_SIZE = 18
+interface SidebarLeaf { to: string; label: string; icon: ReactNode; shortcut?: string }
+type SidebarRow =
+  | (SidebarLeaf & { kind: 'link'; end?: boolean })
+  | { kind: 'group'; label: string; icon: ReactNode; children: SidebarLeaf[] }
 
-interface NavLink_ {
-  to: string
-  label: string
-  icon: ReactNode
-  end?: boolean
+const ROLE_LABEL: Record<string, string> = {
+  pmo_admin: 'PMO Admin',
+  consultant_readonly: 'Consultant',
+  finance_viewer: 'Finance',
+  leadership: 'Leadership',
 }
 
-interface NavGroup {
-  label: string
-  icon: ReactNode
-  children: NavLink_[]
+function childIsActive(pathname: string, to: string): boolean {
+  return pathname === to || pathname.startsWith(to + '/')
 }
 
-type NavItem = (NavLink_ & { type: 'link' }) | (NavGroup & { type: 'group' })
-
-const NAV_ITEMS: NavItem[] = [
-  { type: 'link', to: '/', label: 'Resourcing', icon: <CalendarDays size={ICON_SIZE} />, end: true },
-  {
-    type: 'group', label: 'Projects', icon: <ClipboardList size={ICON_SIZE} />,
-    children: [
-      { to: '/projects', label: 'Projects', icon: <ClipboardList size={ICON_SIZE} /> },
-      { to: '/projects/archive', label: 'Archive', icon: <Archive size={ICON_SIZE} /> },
-      { to: '/projects/kanban', label: 'Kanban', icon: <LayoutGrid size={ICON_SIZE} /> },
-    ],
-  },
-  {
-    type: 'group', label: 'Consultants', icon: <Users size={ICON_SIZE} />,
-    children: [
-      { to: '/consultants', label: 'Consultants', icon: <Users size={ICON_SIZE} /> },
-      { to: '/consultants/archive', label: 'Archive', icon: <Archive size={ICON_SIZE} /> },
-      { to: '/mentor-tree', label: 'Mentor Tree', icon: <GitBranch size={ICON_SIZE} /> },
-    ],
-  },
-  {
-    type: 'group', label: 'Dashboards', icon: <BarChart3 size={ICON_SIZE} />,
-    children: [
-      { to: '/revenue', label: 'Revenue', icon: <DollarSign size={ICON_SIZE} /> },
-      { to: '/historicals', label: 'Historicals', icon: <TrendingUp size={ICON_SIZE} /> },
-      { to: '/capacity', label: 'Capacity', icon: <PieChart size={ICON_SIZE} /> },
-      { to: '/margin', label: 'Margin', icon: <Activity size={ICON_SIZE} /> },
-      { to: '/utilization', label: 'Utilization', icon: <Target size={ICON_SIZE} /> },
-    ],
-  },
-  { type: 'link', to: '/skills', label: 'Skills', icon: <Brain size={ICON_SIZE} /> },
-  { type: 'link', to: '/holidays', label: 'Holidays', icon: <Palmtree size={ICON_SIZE} /> },
-  { type: 'link', to: '/permissions', label: 'Permissions', icon: <Lock size={ICON_SIZE} /> },
-  { type: 'link', to: '/sync-log', label: 'Sync Log', icon: <RefreshCw size={ICON_SIZE} /> },
-  { type: 'link', to: '/security', label: 'Security', icon: <Shield size={ICON_SIZE} /> },
-]
-
-/** Filter nav items based on role access */
-function filterNavItems(items: NavItem[], role: string): NavItem[] {
-  return items.reduce<NavItem[]>((acc, item) => {
-    if (item.type === 'link') {
-      if (canAccess(role as any, item.to)) acc.push(item)
+function buildSidebarRows(role: UserRole | null): SidebarRow[] {
+  const rows: SidebarRow[] = []
+  for (const node of NAV_STRUCTURE) {
+    if (node.kind === 'group') {
+      const children = role
+        ? node.children.filter(c => canAccess(role, c.path))
+        : node.children
+      if (children.length === 0) continue
+      rows.push({
+        kind: 'group',
+        label: node.label,
+        icon: GROUP_ICONS[node.label],
+        children: children.map(c => ({
+          to: c.path,
+          label: c.sidebarLabel ?? c.label,
+          icon: PATH_ICONS[c.path],
+          shortcut: c.shortcut,
+        })),
+      })
     } else {
-      const filteredChildren = item.children.filter(c => canAccess(role as any, c.to))
-      if (filteredChildren.length > 0) {
-        acc.push({ ...item, children: filteredChildren })
-      }
+      if (role && !canAccess(role, node.path)) continue
+      rows.push({
+        kind: 'link',
+        to: node.path,
+        label: node.label,
+        icon: PATH_ICONS[node.path],
+        end: node.end,
+        shortcut: node.shortcut,
+      })
     }
-    return acc
-  }, [])
+  }
+  return rows
+}
+
+function NavShortcut({ letter }: { letter: string }) {
+  return (
+    <span className="nav-shortcut" aria-label={`G then ${letter}`}>
+      <kbd className="nav-kbd">G</kbd>
+      <kbd className="nav-kbd">{letter}</kbd>
+    </span>
+  )
+}
+
+function CollapsedGroup({
+  row, active, open, onOpen, onCloseSoon, onClose,
+}: {
+  row: Extract<SidebarRow, { kind: 'group' }>
+  active: boolean
+  open: boolean
+  onOpen: () => void
+  onCloseSoon: () => void
+  onClose: () => void
+}) {
+  return (
+    <div
+      className={`nav-rail-group${active ? ' is-active' : ''}${open ? ' is-open' : ''}`}
+      onMouseEnter={onOpen}
+      onMouseLeave={onCloseSoon}
+      onBlur={e => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) onClose()
+      }}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        className="nav-group-rail"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label={row.label}
+        onClick={onOpen}
+        onFocus={onOpen}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() }
+          if (e.key === 'Escape') onClose()
+        }}
+      >
+        <span className="nav-icon">{row.icon}</span>
+      </div>
+      {open && (
+        <div className="nav-flyout" role="menu" aria-label={row.label}>
+          <div className="nav-flyout-h">{row.label}</div>
+          {row.children.map(child => (
+            <NavLink key={child.to} to={child.to} end role="menuitem" onClick={onClose}>
+              <span>{child.label}</span>
+              {child.shortcut && <NavShortcut letter={child.shortcut} />}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function initialsFromEmail(email: string | null | undefined): string {
+  if (!email) return '?'
+  const local = email.split('@')[0]
+  const parts = local.split(/[._-]+/).filter(Boolean)
+  const chars = parts.length >= 2 ? parts[0][0] + parts[1][0] : local.slice(0, 2)
+  return chars.toUpperCase()
 }
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const location = useLocation()
   const { user, role, signOut } = useAuth()
-  const visibleNavItems = role ? filterNavItems(NAV_ITEMS, role) : NAV_ITEMS
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => {
-    const expanded = new Set<string>()
-    for (const item of visibleNavItems) {
-      if (item.type === 'group') {
-        if (item.children.some(c => location.pathname === c.to || location.pathname.startsWith(c.to + '/'))) {
-          expanded.add(item.label)
-        }
+  const rows = useMemo(() => buildSidebarRows(role ?? null), [role])
+
+  const routeGroup = useMemo(() => {
+    for (const row of rows) {
+      if (row.kind === 'group' && row.children.some(c => childIsActive(location.pathname, c.to))) {
+        return row.label
       }
     }
-    return expanded
-  })
+    return null
+  }, [rows, location.pathname])
+  const [manualGroup, setManualGroup] = useState<{ path: string; label: string | null } | null>(null)
+  const expandedGroup = manualGroup && manualGroup.path === location.pathname
+    ? manualGroup.label
+    : routeGroup
 
   function toggleGroup(label: string) {
-    setExpandedGroups(prev => {
-      const next = new Set(prev)
-      if (next.has(label)) next.delete(label)
-      else next.add(label)
-      return next
-    })
+    const next = expandedGroup === label ? null : label
+    setManualGroup({ path: location.pathname, label: next })
+  }
+
+  const [railOpen, setRailOpen] = useState<string | null>(null)
+  const railLeave = useRef<number | null>(null)
+  function openRail(label: string) {
+    if (railLeave.current !== null) {
+      clearTimeout(railLeave.current)
+      railLeave.current = null
+    }
+    setRailOpen(label)
+  }
+  function closeRailSoon(label: string) {
+    if (railLeave.current !== null) clearTimeout(railLeave.current)
+    railLeave.current = window.setTimeout(() => {
+      setRailOpen(cur => (cur === label ? null : cur))
+    }, 40)
+  }
+  function closeRail() {
+    if (railLeave.current !== null) {
+      clearTimeout(railLeave.current)
+      railLeave.current = null
+    }
+    setRailOpen(null)
   }
 
   return (
     <nav className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <div className="logo-container">
-        <img src="/altair-logo.svg" alt="Altair" className="app-icon" />
-        {!collapsed && <span className="app-name">Altair</span>}
+        {collapsed ? (
+          <img src="/altair-logo.svg" alt="Altair" className="app-icon" />
+        ) : (
+          <>
+            <img src="/altair-logo.svg" alt="" />
+            <AnimatedText as="span" text="Altair" className="app-name" underline={false} />
+          </>
+        )}
       </div>
 
-      {visibleNavItems.map(item => {
-        if (item.type === 'link') {
+      <div className="sidebar-nav">
+        {rows.map((row) => {
+          if (row.kind === 'link') {
+            return (
+              <NavLink key={row.to} to={row.to} end={row.end} title={row.label}>
+                <span className="nav-icon">{row.icon}</span>
+                {!collapsed && <span className="nav-group-label">{row.label}</span>}
+                {!collapsed && row.shortcut && <NavShortcut letter={row.shortcut} />}
+              </NavLink>
+            )
+          }
+
+          const childActive = row.children.some(c => childIsActive(location.pathname, c.to))
+          if (collapsed) {
+            return (
+              <CollapsedGroup
+                key={row.label}
+                row={row}
+                active={childActive}
+                open={railOpen === row.label}
+                onOpen={() => openRail(row.label)}
+                onCloseSoon={() => closeRailSoon(row.label)}
+                onClose={closeRail}
+              />
+            )
+          }
+
+          const isOpen = expandedGroup === row.label
           return (
-            <NavLink key={item.to} to={item.to} end={item.end} title={item.label}>
-              {collapsed
-                ? <span className="nav-icon">{item.icon}</span>
-                : <><span className="nav-icon">{item.icon}</span>{item.label}</>}
-            </NavLink>
-          )
-        }
-
-        // Group
-        const isExpanded = expandedGroups.has(item.label)
-        const isChildActive = item.children.some(
-          c => location.pathname === c.to || location.pathname.startsWith(c.to + '/')
-        )
-
-        if (collapsed) {
-          return item.children.map(child => (
-            <NavLink key={child.to} to={child.to} title={child.label}>
-              <span className="nav-icon">{child.icon}</span>
-            </NavLink>
-          ))
-        }
-
-        return (
-          <div key={item.label} className="nav-group">
-            <button
-              type="button"
-              className={`nav-group-header ${isChildActive ? 'nav-group-active' : ''}`}
-              onClick={() => toggleGroup(item.label)}
+            <div
+              key={row.label}
+              className={`nav-group${isOpen ? ' nav-group-open' : ''}${row.label === 'Workspace' ? ' nav-group-split' : ''}`}
             >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="nav-icon">{item.icon}</span>{item.label}
-              </span>
-              <span className="nav-group-caret">{isExpanded ? '\u25B2' : '\u25BC'}</span>
-            </button>
-            {isExpanded && (
-              <div className="nav-group-children">
-                {item.children.map(child => (
-                  <NavLink key={child.to} to={child.to} end title={child.label}>
-                    <span className="nav-icon">{child.icon}</span>{child.label}
-                  </NavLink>
-                ))}
+              <div
+                role="button"
+                tabIndex={0}
+                className={`nav-group-header${childActive ? ' nav-group-active' : ''}`}
+                aria-expanded={isOpen}
+                onClick={() => toggleGroup(row.label)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    toggleGroup(row.label)
+                  }
+                }}
+              >
+                <span className="nav-icon">{row.icon}</span>
+                <span className="nav-group-label">{row.label}</span>
+                <span className="nav-group-caret"><ChevronRight size={14} /></span>
               </div>
-            )}
-          </div>
-        )
-      })}
-
-      <button className="sidebar-toggle" onClick={onToggle} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-        {collapsed ? '\u25B6' : '\u25C0'}
-      </button>
+              <div className="nav-group-children">
+                <div className="nav-group-children-inner">
+                  {row.children.map(child => (
+                    <NavLink key={child.to} to={child.to} end title={child.label}>
+                      <span>{child.label}</span>
+                      {child.shortcut && <NavShortcut letter={child.shortcut} />}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
 
       <div style={{ flex: 1 }} />
 
-      {/* User info + sign out */}
-      {user && !collapsed && (
-        <div className="sidebar-user">
-          <div className="sidebar-user-email" title={user.email || ''}>
-            {user.email}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="sidebar-toggle"
+        onClick={onToggle}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        icon={collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+      >
+        {collapsed ? null : 'Collapse'}
+      </Button>
+
+      {user && (
+        <div className="sidebar-account">
+          <div className="sidebar-account-id">
+            <span className="sidebar-avatar" aria-hidden="true">{initialsFromEmail(user.email)}</span>
+            {!collapsed && (
+              <div className="sidebar-account-meta">
+                <span className="sidebar-account-email" title={user.email || ''}>{user.email}</span>
+                {role && <span className="sidebar-account-role">{ROLE_LABEL[role] ?? role}</span>}
+              </div>
+            )}
           </div>
-          <button onClick={signOut} className="sidebar-signout">
-            Sign Out
-          </button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="sidebar-signout"
+            onClick={signOut}
+            aria-label="Sign out"
+            icon={<Logout size={collapsed ? 16 : 14} />}
+          >
+            {collapsed ? null : 'Sign out'}
+          </Button>
         </div>
-      )}
-      {user && collapsed && (
-        <button onClick={signOut} className="sidebar-signout-icon" title="Sign Out">
-          &#x2192;
-        </button>
       )}
     </nav>
   )
@@ -215,8 +324,9 @@ function AuthenticatedApp() {
 
   function toggleSidebar() {
     setCollapsed(prev => {
-      localStorage.setItem('altair-sidebar-collapsed', String(!prev))
-      return !prev
+      const next = !prev
+      localStorage.setItem('altair-sidebar-collapsed', String(next))
+      return next
     })
   }
 
@@ -227,7 +337,6 @@ function AuthenticatedApp() {
   )
 }
 
-/** Route guard — redirects to AccessDenied if role can't access the path */
 function GuardedRoute({ element }: { element: React.ReactNode }) {
   const { role } = useAuth()
   const location = useLocation()
@@ -235,36 +344,98 @@ function GuardedRoute({ element }: { element: React.ReactNode }) {
   return <>{element}</>
 }
 
-/** Separate component so useLocation() is inside BrowserRouter */
 function AppRoutes({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const { role } = useAuth()
+  const navigate = useNavigate()
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const commands = useMemo(() => (role ? buildNavCommands(role) : []), [role])
+  const leaderArmed = useRef(false)
+  const leaderTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen(o => !o)
+        return
+      }
+      if (paletteOpen) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const target = e.target
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+      ) return
+
+      if (!leaderArmed.current) {
+        if (e.key.toLowerCase() === 'g') {
+          leaderArmed.current = true
+          if (leaderTimer.current !== null) clearTimeout(leaderTimer.current)
+          leaderTimer.current = window.setTimeout(() => { leaderArmed.current = false }, 1500)
+        }
+        return
+      }
+
+      leaderArmed.current = false
+      if (leaderTimer.current !== null) {
+        clearTimeout(leaderTimer.current)
+        leaderTimer.current = null
+      }
+      const cmd = matchShortcut(commands, e.key)
+      if (cmd) {
+        e.preventDefault()
+        navigate(cmd.path)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      if (leaderTimer.current !== null) clearTimeout(leaderTimer.current)
+    }
+  }, [commands, navigate, paletteOpen])
+
+  const routes = useMemo(() => (
+    <Routes>
+      <Route path="/" element={<GuardedRoute element={<Resourcing />} />} />
+      <Route path="/projects" element={<GuardedRoute element={<Projects />} />} />
+      <Route path="/projects/archive" element={<GuardedRoute element={<ProjectArchive />} />} />
+      <Route path="/projects/kanban" element={<GuardedRoute element={<ProjectKanban />} />} />
+      <Route path="/projects/:id" element={<GuardedRoute element={<ProjectDetail />} />} />
+      <Route path="/consultants" element={<GuardedRoute element={<Consultants />} />} />
+      <Route path="/consultants/archive" element={<GuardedRoute element={<ConsultantArchive />} />} />
+      <Route path="/consultants/:id" element={<GuardedRoute element={<ConsultantDetail />} />} />
+      <Route path="/revenue" element={<GuardedRoute element={<Revenue />} />} />
+      <Route path="/historicals" element={<GuardedRoute element={<Historicals />} />} />
+      <Route path="/capacity" element={<GuardedRoute element={<Capacity />} />} />
+      <Route path="/margin" element={<GuardedRoute element={<Margin />} />} />
+      <Route path="/utilization" element={<GuardedRoute element={<Utilization />} />} />
+      <Route path="/skills" element={<GuardedRoute element={<SkillsMatrix />} />} />
+      <Route path="/mentor-tree" element={<GuardedRoute element={<MentorTree />} />} />
+      <Route path="/holidays" element={<GuardedRoute element={<Holidays />} />} />
+      <Route path="/permissions" element={<GuardedRoute element={<Permissions />} />} />
+      <Route path="/sync-log" element={<GuardedRoute element={<SyncLog />} />} />
+      <Route path="/security" element={<GuardedRoute element={<Security />} />} />
+    </Routes>
+  ), [])
+
   return (
-    <div className="app">
+    <div className={`app${collapsed ? ' app-sidebar-collapsed' : ''}`}>
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        commands={commands}
+        onSelect={cmd => {
+          setPaletteOpen(false)
+          navigate(cmd.path)
+        }}
+      />
       <Sidebar collapsed={collapsed} onToggle={onToggle} />
       <main className="content">
-        <Suspense fallback={<div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading...</div>}>
-        <Routes>
-          <Route path="/" element={<GuardedRoute element={<Resourcing />} />} />
-          <Route path="/projects" element={<GuardedRoute element={<Projects />} />} />
-          <Route path="/projects/archive" element={<GuardedRoute element={<ProjectArchive />} />} />
-          <Route path="/projects/kanban" element={<GuardedRoute element={<ProjectKanban />} />} />
-          <Route path="/projects/:id" element={<GuardedRoute element={<ProjectDetail />} />} />
-          <Route path="/consultants" element={<GuardedRoute element={<Consultants />} />} />
-          <Route path="/consultants/archive" element={<GuardedRoute element={<ConsultantArchive />} />} />
-          <Route path="/consultants/:id" element={<GuardedRoute element={<ConsultantDetail />} />} />
-          <Route path="/revenue" element={<GuardedRoute element={<Revenue />} />} />
-          <Route path="/historicals" element={<GuardedRoute element={<Historicals />} />} />
-          <Route path="/capacity" element={<GuardedRoute element={<Capacity />} />} />
-          <Route path="/margin" element={<GuardedRoute element={<Margin />} />} />
-          <Route path="/utilization" element={<GuardedRoute element={<Utilization />} />} />
-          <Route path="/skills" element={<GuardedRoute element={<SkillsMatrix />} />} />
-          <Route path="/holidays" element={<GuardedRoute element={<Holidays />} />} />
-          <Route path="/permissions" element={<GuardedRoute element={<Permissions />} />} />
-          <Route path="/sync-log" element={<GuardedRoute element={<SyncLog />} />} />
-          <Route path="/security" element={<GuardedRoute element={<Security />} />} />
-          <Route path="/mentor-tree" element={<GuardedRoute element={<MentorTree />} />} />
-        </Routes>
+        <Suspense fallback={<PageSkeleton />}>
+          {routes}
         </Suspense>
       </main>
+      <Toaster position="bottom-right" richColors closeButton />
     </div>
   )
 }
@@ -274,10 +445,11 @@ function AppShell() {
 
   if (loading) {
     return (
-      <div className="login-page">
-        <div className="login-card">
-          <div className="login-spinner" />
-          <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Loading...</p>
+      <div className="login-page login-page--plain">
+        <div className="login-inner">
+          <img src="/altair-logo.svg" alt="" className="login-logo" />
+          <h1 className="login-title">Altair</h1>
+          <div className="login-pulse-bar" role="status" aria-label="Loading" />
         </div>
       </div>
     )
@@ -285,7 +457,6 @@ function AppShell() {
 
   if (!session) return <Login />
   if (!role) return <AccessDenied />
-
   return <AuthenticatedApp />
 }
 

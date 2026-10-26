@@ -1,26 +1,39 @@
-import { useMemo } from 'react'
+import { memo, useCallback, useMemo, useRef, useState, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { downloadCsv } from '../lib/csv'
 import { LoadingState } from '../components/LoadingState'
 import { SavedViewBar } from '../components/SavedViewBar'
-import { fmtCurrency, fmtShort, formatMonth, btnStyle, activeBtn } from '../lib/financeUtils'
+import { PageTitle, MultiSelect, Button, Dialog } from '../components/ui'
+import { SearchableSelect } from '../components/SearchableSelect'
+import { fmtCurrency, fmtShort, formatMonth } from '../lib/financeUtils'
 import { statusCategory } from '../lib/revenueUtils'
 import { useRevenueData } from '../hooks/useRevenueData'
 import { CAT_COLORS, CAT_LABELS } from '../types/revenue'
-import type { CatKey, RevenueProjectContribution } from '../types/revenue'
+import type { CatKey, RevenueMonthBucket, RevenueProjectContribution } from '../types/revenue'
+import './Revenue.css'
 
 const fmt = fmtCurrency
+
+type DisplayCat = 'hard' | 'soft_at_risk' | 'soft_unconfirmed'
+const STACK_ORDER: DisplayCat[] = ['hard', 'soft_at_risk', 'soft_unconfirmed']
+const LEGEND_ORDER: DisplayCat[] = ['hard', 'soft_at_risk', 'soft_unconfirmed']
+
+const CHART_H = 320
+const PAD_L = 64
+const PAD_R = 28
+const PAD_T = 28
+const PAD_B = 40
+const PLOT_H = CHART_H - PAD_T - PAD_B
+
+interface HoverState { bucket: RevenueMonthBucket; x: number; y: number }
 
 export function Revenue() {
   const {
     loading, error, retry,
     viewMode, setViewMode,
     selectedMonths, setSelectedMonths,
-    monthPickerOpen, setMonthPickerOpen, monthPickerRef,
     selectedYear, setSelectedYear,
-    yearPickerOpen, setYearPickerOpen, yearPickerRef,
     filterPracticeManagers, setFilterPracticeManagers,
-    showPMFilter, setShowPMFilter, pmFilterRef,
     drilldown, setDrilldown,
     availablePMs, filteredMonthKeys, availableYears,
     displayBuckets, openDrilldown, maxVal, totals,
@@ -28,418 +41,182 @@ export function Revenue() {
     buildExportRows,
   } = useRevenueData()
 
-  // Build SVG area chart — dynamic width based on number of data points
-  const chartH = 300
-  const padL = 70
-  const padR = 70
-  const padT = 40
-  const padB = 50
+  const chartRef = useRef<HTMLDivElement | null>(null)
+  const [containerW, setContainerW] = useState(0)
+  const setChartRef = useCallback((node: HTMLDivElement | null) => {
+    chartRef.current = node
+    if (!node) return
+    setContainerW(node.clientWidth)
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(entries => setContainerW(entries[0].contentRect.width))
+    ro.observe(node)
+    return () => ro.disconnect()
+  }, [])
+
   const nPoints = displayBuckets.length
-  const minPointSpacing = 140
-  const chartW = padL + padR + Math.max((nPoints - 1) * minPointSpacing, minPointSpacing)
-  const plotW = chartW - padL - padR
-  const plotH = chartH - padT - padB
-  const xStep = nPoints > 1 ? plotW / (nPoints - 1) : plotW / 2
+  const chartW = useMemo(() => {
+    const minStep = viewMode === 'monthly' ? 92 : 170
+    const inner = Math.max(0, containerW - PAD_L - PAD_R)
+    const plotW = Math.max(inner, (nPoints - 1) * minStep, minStep)
+    return PAD_L + PAD_R + plotW
+  }, [containerW, nPoints, viewMode])
 
-  // Build stacked values: hard is bottom, soft_at_risk middle, soft_unconfirmed top
-  const stackedPoints = displayBuckets.map((b, i) => {
-    const x = nPoints > 1 ? padL + i * xStep : padL + plotW / 2
-    const y0 = padT + plotH // baseline
-    const hardH = (b.hard / maxVal) * plotH
-    const arH = (b.soft_at_risk / maxVal) * plotH
-    const ucH = (b.soft_unconfirmed / maxVal) * plotH
-    return {
-      x,
-      yHard: y0 - hardH,
-      yAtRisk: y0 - hardH - arH,
-      yUnconfirmed: y0 - hardH - arH - ucH,
-      baseline: y0,
-      bucket: b,
-    }
-  })
-
-  function areaPath(points: { x: number }[], getY: (p: typeof stackedPoints[0]) => number, getYBase: (p: typeof stackedPoints[0]) => number): string {
-    if (points.length === 0) return ''
-    const pts = stackedPoints
-    // Forward path (top edge)
-    let d = `M ${pts[0].x} ${getY(pts[0])}`
-    for (let i = 1; i < pts.length; i++) {
-      d += ` L ${pts[i].x} ${getY(pts[i])}`
-    }
-    // Reverse path (bottom edge)
-    for (let i = pts.length - 1; i >= 0; i--) {
-      d += ` L ${pts[i].x} ${getYBase(pts[i])}`
-    }
-    d += ' Z'
-    return d
-  }
-
-  // Y-axis tick values
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(pct => maxVal * pct)
+  const [showInfo, setShowInfo] = useState(false)
+  const [hover, setHover] = useState<HoverState | null>(null)
+  const onHover = useCallback((bucket: RevenueMonthBucket, x: number, y: number) => setHover({ bucket, x, y }), [])
+  const onLeave = useCallback(() => setHover(null), [])
 
   function exportRevenueCsv() {
-    // Per-project rows across the currently filtered months.
-    // Always month-grain (quarter-by-project rollups don't add value; finance
-    // pivots in Excel). Matches the columns sent in the weekly finance email.
     const rows = buildExportRows()
     downloadCsv(rows, `altair-revenue-by-project-${new Date().toISOString().slice(0, 10)}.csv`)
   }
 
   if (loading || error) return <LoadingState loading={loading} error={error} retry={retry} message="Loading revenue..." />
 
+  const periodLabel = viewMode === 'monthly' ? 'Month' : 'Quarter'
+  const bucketWord = viewMode === 'monthly' ? 'months' : 'quarters'
+
   return (
-    <div>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-        <h2>Revenue</h2>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Practice Manager filter */}
-          <div ref={pmFilterRef} style={{ position: 'relative' }}>
-            <button type="button" onClick={() => setShowPMFilter(o => !o)}
-              style={{ ...btnStyle, display: 'flex', alignItems: 'center', gap: '0.35rem', ...(filterPracticeManagers.size > 0 ? activeBtn : {}) }}>
-              <span>{filterPracticeManagers.size > 0 ? `PMs (${filterPracticeManagers.size})` : 'All PMs'}</span>
-              <span style={{ fontSize: '0.5rem' }}>{showPMFilter ? '\u25B2' : '\u25BC'}</span>
-            </button>
-            {showPMFilter && (
-              <div style={{
-                position: 'absolute', top: '100%', right: 0, minWidth: '200px',
-                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4,
-                zIndex: 100, maxHeight: '280px', overflowY: 'auto', padding: '0.25rem 0', marginTop: 2,
-              }}>
-                {filterPracticeManagers.size > 0 && (
-                  <div onClick={() => setFilterPracticeManagers(new Set())} style={{
-                    padding: '0.3rem 0.5rem', fontSize: '0.7rem', color: 'var(--brand-green)',
-                    cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                  }}>Clear all</div>
-                )}
-                {availablePMs.map(pm => {
-                  const checked = filterPracticeManagers.has(pm)
-                  return (
-                    <label key={pm} style={{
-                      display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.5rem',
-                      fontSize: '0.75rem', color: 'var(--text-primary)', cursor: 'pointer',
-                    }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-input)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <input type="checkbox" checked={checked}
-                        onChange={() => setFilterPracticeManagers(prev => {
-                          const n = new Set(prev); if (checked) n.delete(pm); else n.add(pm); return n
-                        })}
-                        style={{ accentColor: 'var(--brand-green)' }} />
-                      {pm}
-                    </label>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-          {/* Year filter */}
-          <div ref={yearPickerRef} style={{ position: 'relative' }}>
-            <button
-              type="button"
-              onClick={() => setYearPickerOpen(o => !o)}
-              style={{ ...btnStyle, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+    <div className="rv">
+      <div className="rv-head">
+        <div className="rv-titlewrap">
+          <PageTitle title="Revenue" meta={`(${nPoints} ${bucketWord})`} style={{ margin: 0 }} />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="rv-info"
+            aria-label="How this data is calculated"
+            title="How this data is calculated"
+            onClick={() => setShowInfo(true)}
+          >
+            i
+          </Button>
+        </div>
+        <div className="rv-tabs" role="tablist" aria-label="Time grain">
+          {([['monthly', 'Monthly'], ['quarterly', 'Quarterly']] as const).map(([mode, label]) => (
+            <Button
+              key={mode}
+              variant="ghost"
+              size="sm"
+              className={`view-tab${viewMode === mode ? ' view-tab--active' : ''}`}
+              aria-pressed={viewMode === mode}
+              onClick={() => setViewMode(mode)}
             >
-              <span>{selectedYear === 'all' ? 'All Years' : selectedYear}</span>
-              <span style={{ fontSize: '0.5rem' }}>{yearPickerOpen ? '\u25B2' : '\u25BC'}</span>
-            </button>
-            {yearPickerOpen && (
-              <div style={{
-                position: 'absolute', top: '100%', right: 0, minWidth: '120px',
-                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4,
-                zIndex: 100, maxHeight: '240px', overflowY: 'auto', padding: '0.25rem 0', marginTop: 2,
-              }}>
-                <div
-                  onClick={() => { setSelectedYear('all'); setYearPickerOpen(false) }}
-                  style={{
-                    padding: '0.35rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer',
-                    color: selectedYear === 'all' ? 'var(--brand-green)' : 'var(--text-primary)',
-                    fontWeight: selectedYear === 'all' ? 600 : 400,
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-input)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  All Years
-                </div>
-                {availableYears.map(y => (
-                  <div
-                    key={y}
-                    onClick={() => { setSelectedYear(y); setYearPickerOpen(false) }}
-                    style={{
-                      padding: '0.35rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer',
-                      color: selectedYear === y ? 'var(--brand-green)' : 'var(--text-primary)',
-                      fontWeight: selectedYear === y ? 600 : 400,
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-input)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    {y}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          {/* Month filter */}
-          <div ref={monthPickerRef} style={{ position: 'relative' }}>
-            <button
-              type="button"
-              onClick={() => setMonthPickerOpen(o => !o)}
-              style={{ ...btnStyle, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-            >
-              <span>{selectedMonths.length === 0 ? 'All Months' : `${selectedMonths.length} months`}</span>
-              <span style={{ fontSize: '0.5rem' }}>{monthPickerOpen ? '\u25B2' : '\u25BC'}</span>
-            </button>
-            {monthPickerOpen && (
-              <div style={{
-                position: 'absolute', top: '100%', right: 0, minWidth: '160px',
-                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 4,
-                zIndex: 100, maxHeight: '240px', overflowY: 'auto', padding: '0.25rem 0', marginTop: 2,
-              }}>
-                {selectedMonths.length > 0 && (
-                  <div onClick={() => setSelectedMonths([])} style={{
-                    padding: '0.3rem 0.5rem', fontSize: '0.7rem', color: 'var(--brand-green)',
-                    cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                  }}>Clear all</div>
-                )}
-                {filteredMonthKeys.map(m => {
-                  const checked = selectedMonths.includes(m)
-                  return (
-                    <label key={m} style={{
-                      display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.25rem 0.5rem',
-                      fontSize: '0.75rem', color: 'var(--text-primary)', cursor: 'pointer',
-                    }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-input)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <input type="checkbox" checked={checked}
-                        onChange={() => setSelectedMonths(prev => checked ? prev.filter(v => v !== m) : [...prev, m])}
-                        style={{ accentColor: 'var(--brand-green)' }} />
-                      {formatMonth(m)}
-                    </label>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-          <button onClick={() => setViewMode('monthly')} style={{ ...btnStyle, ...(viewMode === 'monthly' ? activeBtn : {}) }}>Monthly</button>
-          <button onClick={() => setViewMode('quarterly')} style={{ ...btnStyle, ...(viewMode === 'quarterly' ? activeBtn : {}) }}>Quarterly</button>
-          <button onClick={exportRevenueCsv} style={btnStyle} title="Export as CSV">Export CSV</button>
-          <SavedViewBar page="revenue" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} onClear={() => applyFilters({ viewMode: 'monthly', selectedYear: '2026', selectedMonths: [], filterPracticeManagers: [] })} />
+              {label}
+            </Button>
+          ))}
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
-        <SummaryCard label="Total Revenue" value={fmt(totals.total)} />
-        <SummaryCard label={CAT_LABELS.soft_unconfirmed} value={fmt(totals.soft_unconfirmed)} color={CAT_COLORS.soft_unconfirmed} />
-        <SummaryCard label={CAT_LABELS.soft_at_risk} value={fmt(totals.soft_at_risk)} color={CAT_COLORS.soft_at_risk} />
-        <SummaryCard label={CAT_LABELS.hard} value={fmt(totals.hard)} color={CAT_COLORS.hard} />
+      <div className="rv-filters">
+        <MultiSelect
+          label="Practice Managers"
+          options={availablePMs.map(pm => ({ value: pm, label: pm }))}
+          value={[...filterPracticeManagers]}
+          onChange={next => setFilterPracticeManagers(new Set(next))}
+        />
+        <SearchableSelect
+          variant="ghost"
+          value={selectedYear}
+          onChange={setSelectedYear}
+          options={[{ value: 'all', label: 'All Years' }, ...availableYears.map(y => ({ value: y, label: y }))]}
+          placeholder="Year"
+        />
+        <MultiSelect
+          label="Months"
+          options={filteredMonthKeys.map(m => ({ value: m, label: formatMonth(m) }))}
+          value={selectedMonths}
+          onChange={setSelectedMonths}
+          align="right"
+        />
+        <span className="rv-filters-spacer" aria-hidden="true" />
+        <Button variant="ghost" size="sm" onClick={exportRevenueCsv} title="Export as CSV">Export CSV</Button>
+        <SavedViewBar page="revenue" getFilters={getFilters} applyFilters={applyFilters} hasActiveFilters={hasActiveFilters} onClear={() => applyFilters({ viewMode: 'monthly', selectedYear: '2026', selectedMonths: [], filterPracticeManagers: [] })} />
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem' }}>
-        {(['hard', 'soft_at_risk', 'soft_unconfirmed'] as CatKey[]).map(cat => (
-          <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <div style={{ width: 12, height: 12, borderRadius: 2, background: CAT_COLORS[cat] }} />
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{CAT_LABELS[cat]}</span>
-          </div>
+      <div className="rv-kpis">
+        <Kpi label="Total Revenue" value={fmt(totals.total)} />
+        {LEGEND_ORDER.slice().reverse().map(cat => (
+          <Kpi key={cat} label={CAT_LABELS[cat]} value={fmt(totals[cat])} color={CAT_COLORS[cat]} />
         ))}
       </div>
 
-      {/* Stacked Area Chart */}
+      <div className="rv-sect">
+        <h3>Revenue over time <span className="rv-cnt">{nPoints} {bucketWord}</span></h3>
+        <div className="rv-legend">
+          {LEGEND_ORDER.map(cat => (
+            <div key={cat} className="rv-legend-i">
+              <span className="rv-legend-sw" style={{ background: CAT_COLORS[cat] }} />
+              {CAT_LABELS[cat]}
+            </div>
+          ))}
+        </div>
+      </div>
+
       {displayBuckets.length === 0 ? (
-        <div style={{
-          background: 'var(--bg-card)', borderRadius: 8, padding: '3rem',
-          textAlign: 'center', color: 'var(--text-muted)',
-        }}>
+        <div className="rv-empty">
           No billable projects with SOW amounts and engagement dates to chart.
           <br />
-          <span style={{ fontSize: '0.8rem' }}>Add SOW amounts and engagement start/end dates on the Projects page.</span>
+          <span>Add SOW amounts and engagement start/end dates on the Projects page.</span>
         </div>
       ) : (
-        <div style={{
-          background: 'var(--bg-card)', borderRadius: 8, padding: '1.5rem',
-          border: '1px solid var(--border-subtle)', overflowX: 'auto',
-          display: 'flex', justifyContent: 'center',
-        }}>
-          <svg width={chartW} height={chartH} viewBox={`0 0 ${chartW} ${chartH}`} style={{ display: 'block', maxWidth: '100%', height: 'auto' }}>
-            {/* Grid lines */}
-            {yTicks.map((val, i) => {
-              const y = padT + plotH - (val / maxVal) * plotH
-              return (
-                <g key={i}>
-                  <line x1={padL} x2={padL + plotW} y1={y} y2={y} stroke="var(--border-subtle)" strokeWidth={1} opacity={i === 0 ? 1 : 0.4} />
-                  <text x={padL - 8} y={y + 4} textAnchor="end" fill="var(--text-muted)" fontSize={10}>{fmtShort(val)}</text>
-                </g>
-              )
-            })}
-
-            {/* Stacked areas — bottom to top: hard (red), soft_at_risk (orange), soft_unconfirmed (green) */}
-            {nPoints > 0 && (
-              <>
-                {/* Hard area (bottom) */}
-                <path
-                  d={areaPath(stackedPoints, p => p.yHard, p => p.baseline)}
-                  fill={CAT_COLORS.hard} opacity={0.6}
-                />
-                {/* Soft At Risk area (middle) */}
-                <path
-                  d={areaPath(stackedPoints, p => p.yAtRisk, p => p.yHard)}
-                  fill={CAT_COLORS.soft_at_risk} opacity={0.6}
-                />
-                {/* Soft Unconfirmed area (top) */}
-                <path
-                  d={areaPath(stackedPoints, p => p.yUnconfirmed, p => p.yAtRisk)}
-                  fill={CAT_COLORS.soft_unconfirmed} opacity={0.6}
-                />
-
-                {/* Lines on top edges */}
-                <polyline
-                  points={stackedPoints.map(p => `${p.x},${p.yHard}`).join(' ')}
-                  fill="none" stroke={CAT_COLORS.hard} strokeWidth={2}
-                />
-                <polyline
-                  points={stackedPoints.map(p => `${p.x},${p.yAtRisk}`).join(' ')}
-                  fill="none" stroke={CAT_COLORS.soft_at_risk} strokeWidth={2}
-                />
-                <polyline
-                  points={stackedPoints.map(p => `${p.x},${p.yUnconfirmed}`).join(' ')}
-                  fill="none" stroke={CAT_COLORS.soft_unconfirmed} strokeWidth={2}
-                />
-
-                {/* Data points + labels */}
-                {stackedPoints.map((p, i) => (
-                  <g key={i}>
-                    {/* Total label at top — clickable to show all projects */}
-                    <g
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => openDrilldown(p.bucket.key, p.bucket.label, 'total')}
-                    >
-                      <text x={p.x} y={p.yUnconfirmed - 18} textAnchor="middle" fill="var(--text-primary)" fontSize={11} fontWeight={700}>
-                        {fmt(p.bucket.total)}
-                      </text>
-                    </g>
-
-                    {/* Individual value labels */}
-                    {p.bucket.soft_unconfirmed > 0 && (
-                      <>
-                        <circle cx={p.x} cy={p.yUnconfirmed} r={3.5} fill={CAT_COLORS.soft_unconfirmed} stroke="#fff" strokeWidth={1} />
-                        <DataLabel
-                          x={p.x} y={p.yUnconfirmed} value={p.bucket.soft_unconfirmed}
-                          color={CAT_COLORS.soft_unconfirmed} offset={-1}
-                          onClick={() => openDrilldown(p.bucket.key, p.bucket.label, 'soft_unconfirmed')}
-                        />
-                      </>
-                    )}
-                    {p.bucket.soft_at_risk > 0 && (
-                      <>
-                        <circle cx={p.x} cy={p.yAtRisk} r={3.5} fill={CAT_COLORS.soft_at_risk} stroke="#fff" strokeWidth={1} />
-                        <DataLabel
-                          x={p.x} y={p.yAtRisk} value={p.bucket.soft_at_risk}
-                          color={CAT_COLORS.soft_at_risk} offset={-1}
-                          onClick={() => openDrilldown(p.bucket.key, p.bucket.label, 'soft_at_risk')}
-                        />
-                      </>
-                    )}
-                    {p.bucket.hard > 0 && (
-                      <circle cx={p.x} cy={p.yHard} r={3.5} fill={CAT_COLORS.hard} stroke="#fff" strokeWidth={1} />
-                    )}
-                    {p.bucket.hard > 0 && (
-                      <DataLabel
-                        x={p.x} y={p.yHard} value={p.bucket.hard}
-                        color={CAT_COLORS.hard} offset={12}
-                        onClick={() => openDrilldown(p.bucket.key, p.bucket.label, 'hard')}
-                      />
-                    )}
-
-                    {/* X-axis label */}
-                    <text x={p.x} y={padT + plotH + 20} textAnchor="middle" fill="var(--text-muted)" fontSize={11}>
-                      {p.bucket.label}
-                    </text>
-                  </g>
-                ))}
-              </>
-            )}
-
-            {/* Baseline */}
-            <line x1={padL} x2={padL + plotW} y1={padT + plotH} y2={padT + plotH} stroke="var(--border)" strokeWidth={1} />
-          </svg>
+        <div className="rv-chart" ref={setChartRef}>
+          <div className="rv-chart-scroll">
+            <RevenueChart
+              buckets={displayBuckets}
+              width={chartW}
+              maxVal={maxVal}
+              onHover={onHover}
+              onLeave={onLeave}
+              onPointClick={openDrilldown}
+            />
+          </div>
+          {hover && <ChartTooltip hover={hover} containerRef={chartRef} />}
         </div>
       )}
 
-      {/* Data table */}
       {displayBuckets.length > 0 && (
-        <table style={{ marginTop: '1.5rem' }}>
-          <thead>
-            <tr>
-              <th>{viewMode === 'monthly' ? 'Month' : 'Quarter'}</th>
-              <th style={{ textAlign: 'right', color: CAT_COLORS.soft_unconfirmed }}>Soft (Unconfirmed)</th>
-              <th style={{ textAlign: 'right', color: CAT_COLORS.soft_at_risk }}>Soft (At Risk)</th>
-              <th style={{ textAlign: 'right', color: CAT_COLORS.hard }}>Hard Scheduled</th>
-              <th style={{ textAlign: 'right' }}>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayBuckets.map(b => (
-              <tr key={b.key}>
-                <td>{b.label}</td>
-                <td style={{ textAlign: 'right', color: CAT_COLORS.soft_unconfirmed }}>
-                  <span
-                    className="drilldown-cell"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => openDrilldown(b.key, b.label, 'soft_unconfirmed')}
-                  >
-                    {fmt(b.soft_unconfirmed)}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'right', color: CAT_COLORS.soft_at_risk }}>
-                  <span
-                    className="drilldown-cell"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => openDrilldown(b.key, b.label, 'soft_at_risk')}
-                  >
-                    {fmt(b.soft_at_risk)}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'right', color: CAT_COLORS.hard }}>
-                  <span
-                    className="drilldown-cell"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => openDrilldown(b.key, b.label, 'hard')}
-                  >
-                    {fmt(b.hard)}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                  <span
-                    className="drilldown-cell"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => openDrilldown(b.key, b.label, 'total')}
-                  >
-                    {fmt(b.total)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            <tr style={{ borderTop: '2px solid var(--border)' }}>
-              <td style={{ fontWeight: 700 }}>Total</td>
-              <td style={{ textAlign: 'right', fontWeight: 700, color: CAT_COLORS.soft_unconfirmed }}>{fmt(totals.soft_unconfirmed)}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700, color: CAT_COLORS.soft_at_risk }}>{fmt(totals.soft_at_risk)}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700, color: CAT_COLORS.hard }}>{fmt(totals.hard)}</td>
-              <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(totals.total)}</td>
-            </tr>
-          </tbody>
-        </table>
+        <>
+          <div className="rv-sect">
+            <h3>Breakdown <span className="rv-cnt">{displayBuckets.length} rows</span></h3>
+          </div>
+          <div className="rv-tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="cap">{periodLabel}</th>
+                  <th className="rv-mixhead">Mix</th>
+                  <th className="num" style={{ color: CAT_COLORS.soft_unconfirmed }}>Soft (Unconfirmed)</th>
+                  <th className="num" style={{ color: CAT_COLORS.soft_at_risk }}>Soft (At Risk)</th>
+                  <th className="num" style={{ color: CAT_COLORS.hard }}>Hard Scheduled</th>
+                  <th className="num rv-th-total">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayBuckets.map(b => (
+                  <tr key={b.key}>
+                    <td className="cap">{b.label}</td>
+                    <td className="rv-mix"><MixTicks bucket={b} /></td>
+                    <DrillCell value={b.soft_unconfirmed} color={CAT_COLORS.soft_unconfirmed} onClick={() => openDrilldown(b.key, b.label, 'soft_unconfirmed')} />
+                    <DrillCell value={b.soft_at_risk} color={CAT_COLORS.soft_at_risk} onClick={() => openDrilldown(b.key, b.label, 'soft_at_risk')} />
+                    <DrillCell value={b.hard} color={CAT_COLORS.hard} onClick={() => openDrilldown(b.key, b.label, 'hard')} />
+                    <td className="num mono rv-amt"><span className="rv-drill" onClick={() => openDrilldown(b.key, b.label, 'total')}>{fmt(b.total)}</span></td>
+                  </tr>
+                ))}
+                <tr className="rv-tot">
+                  <td className="cap">Total</td>
+                  <td />
+                  <td className="num mono" style={{ color: CAT_COLORS.soft_unconfirmed }}>{fmt(totals.soft_unconfirmed)}</td>
+                  <td className="num mono" style={{ color: CAT_COLORS.soft_at_risk }}>{fmt(totals.soft_at_risk)}</td>
+                  <td className="num mono" style={{ color: CAT_COLORS.hard }}>{fmt(totals.hard)}</td>
+                  <td className="num mono">{fmt(totals.total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
-      {/* Hover underline style for drilldown cells */}
-      <style>{`
-        .drilldown-cell:hover {
-          text-decoration: underline;
-        }
-      `}</style>
-
-      {/* Drill-down Dialog */}
       {drilldown && (
         <DrilldownDialog
           label={drilldown.label}
@@ -448,38 +225,204 @@ export function Revenue() {
           onClose={() => setDrilldown(null)}
         />
       )}
+
+      {showInfo && <CalcDialog onClose={() => setShowInfo(false)} />}
     </div>
   )
 }
 
-// Clickable data label with background box (like the reference image)
-function DataLabel({ x, y, value, color, offset, onClick }: {
-  x: number; y: number; value: number; color: string; offset: number; onClick?: () => void
-}) {
-  const text = fmt(value)
-  const w = text.length * 6.5 + 10
-  const ly = y + offset
+function CalcDialog({ onClose }: { onClose: () => void }) {
   return (
-    <g style={{ cursor: onClick ? 'pointer' : 'default' }} onClick={onClick}>
-      <rect x={x - w / 2} y={ly - 9} width={w} height={16} rx={2} fill="var(--bg-card)" stroke={color} strokeWidth={0.5} opacity={0.9} />
-      <text x={x} y={ly + 3} textAnchor="middle" fill={color} fontSize={9} fontWeight={600}>{text}</text>
-    </g>
+    <Dialog
+      open
+      onOpenChange={next => { if (!next) onClose() }}
+      title="How this data is calculated"
+      ariaLabel="How this data is calculated"
+      width={620}
+      footer={<><span /><Button variant="secondary" size="sm" onClick={onClose}>Close</Button></>}
+    >
+      <div className="rv-calc-grp">
+        <div className="rv-calc-lbl">Month revenue</div>
+        <div className="rv-calc">{`Bill Rate      = SOW Amount / max(planned hours, assigned hours)
+Month Revenue = hours that assignment overlaps the month × Bill Rate
+
+Only billable assignments are priced. A project with no
+assignments contributes $0. The rate floor is planned hours, so
+an under-assigned project does not inflate its bill rate; if
+assigned hours exceed planned, assigned hours are the denominator
+so project revenue cannot exceed the SOW amount.`}</div>
+      </div>
+      <div className="rv-calc-grp">
+        <div className="rv-calc-lbl">Categories</div>
+        <div className="rv-calc">{`Each project lands in one bucket from its status:
+Hard Scheduled     = hard_scheduled, active, or done
+Soft (At Risk)     = soft_at_risk
+Soft (Unconfirmed) = soft_unconfirmed
+
+The chart stacks those three. Quarterly view sums the months.`}</div>
+      </div>
+      <div className="rv-calc-foot">
+        Click a period or a category cell to see the projects behind that number.
+      </div>
+    </Dialog>
   )
 }
 
-function SummaryCard({ label, value, color }: { label: string; value: string; color?: string }) {
+function Kpi({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div style={{
-      background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
-      borderRadius: 8, padding: '1rem 1.5rem', minWidth: 140, flex: '1 1 0',
-    }}>
-      <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-      <div style={{ fontSize: '1.4rem', fontWeight: 700, color: color || 'var(--text-primary)', marginTop: '0.25rem' }}>{value}</div>
+    <div className="rv-kpi">
+      <div className="rv-kpi-l">
+        {color && <span className="rv-kpi-dot" style={{ background: color }} />}
+        {label}
+      </div>
+      <div className="rv-kpi-v">{value}</div>
     </div>
   )
 }
 
-// Drill-down dialog component
+function DrillCell({ value, color, onClick }: { value: number; color: string; onClick: () => void }) {
+  return (
+    <td className="num mono" style={{ color }}>
+      <span className="rv-drill" onClick={onClick}>{fmt(value)}</span>
+    </td>
+  )
+}
+
+const MIX_MONTHLY_SCALE = 2_000_000
+
+function MixTicks({ bucket }: { bucket: RevenueMonthBucket }) {
+  return (
+    <div className="rv-tick">
+      {STACK_ORDER.map(cat => {
+        const pct = Math.min(100, (bucket[cat] / MIX_MONTHLY_SCALE) * 100)
+        if (pct <= 0) return null
+        return <span key={cat} style={{ width: `${pct}%`, background: `color-mix(in srgb, transparent 30%, ${CAT_COLORS[cat]})` }} />
+      })}
+    </div>
+  )
+}
+
+interface ChartProps {
+  buckets: RevenueMonthBucket[]
+  width: number
+  maxVal: number
+  onHover: (b: RevenueMonthBucket, x: number, y: number) => void
+  onLeave: () => void
+  onPointClick: (key: string, label: string, cat: CatKey | 'total') => void
+}
+
+const RevenueChart = memo(function RevenueChart({ buckets, width, maxVal, onHover, onLeave, onPointClick }: ChartProps) {
+  const n = buckets.length
+  const plotW = width - PAD_L - PAD_R
+  const xAt = (i: number) => (n > 1 ? PAD_L + i * (plotW / (n - 1)) : PAD_L + plotW / 2)
+
+  const stack = buckets.map((b, i) => {
+    let yb = PAD_T + PLOT_H
+    const layer: Record<string, { top: number; bot: number }> = {}
+    for (const cat of STACK_ORDER) {
+      const h = (b[cat] / maxVal) * PLOT_H
+      layer[cat] = { top: yb - h, bot: yb }
+      yb -= h
+    }
+    return { x: xAt(i), layer, top: yb, b }
+  })
+
+  function areaPath(cat: CatKey): string {
+    let d = `M ${stack[0].x} ${stack[0].layer[cat].top}`
+    for (let i = 1; i < stack.length; i++) d += ` L ${stack[i].x} ${stack[i].layer[cat].top}`
+    for (let i = stack.length - 1; i >= 0; i--) d += ` L ${stack[i].x} ${stack[i].layer[cat].bot}`
+    return d + ' Z'
+  }
+  const linePath = (cat: CatKey) => stack.map((s, i) => `${i ? 'L' : 'M'} ${s.x} ${s.layer[cat].top}`).join(' ')
+  const totalLine = stack.map((s, i) => `${i ? 'L' : 'M'} ${s.x} ${s.top}`).join(' ')
+
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(p => maxVal * p)
+  const hitW = plotW / (n > 1 ? n - 1 : 1)
+
+  return (
+    <svg width={width} height={CHART_H} viewBox={`0 0 ${width} ${CHART_H}`}>
+      <defs>
+        {STACK_ORDER.map(cat => (
+          <linearGradient key={cat} id={`rvg-${cat}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={CAT_COLORS[cat]} stopOpacity={0.42} />
+            <stop offset="100%" stopColor={CAT_COLORS[cat]} stopOpacity={0.04} />
+          </linearGradient>
+        ))}
+      </defs>
+
+      {yTicks.map((val, i) => {
+        const y = PAD_T + PLOT_H - (val / maxVal) * PLOT_H
+        return (
+          <g key={i}>
+            <line x1={PAD_L} x2={PAD_L + plotW} y1={y} y2={y} stroke="var(--border-subtle)" strokeWidth={1} opacity={i === 0 ? 0 : 0.6} />
+            <text x={PAD_L - 10} y={y + 3} textAnchor="end" className="rv-axis">{fmtShort(val)}</text>
+          </g>
+        )
+      })}
+
+      {STACK_ORDER.map(cat => (
+        <path key={`a-${cat}`} d={areaPath(cat)} fill={`url(#rvg-${cat})`} />
+      ))}
+      {STACK_ORDER.map(cat => (
+        <path key={`l-${cat}`} d={linePath(cat)} fill="none" stroke={CAT_COLORS[cat]} strokeWidth={2} strokeLinejoin="round" />
+      ))}
+
+      <path d={totalLine} fill="none" stroke="var(--brand-cyan)" strokeWidth={1.5} strokeDasharray="2 3" opacity={0.55} />
+      {stack.map((s, i) => (
+        <circle key={i} cx={s.x} cy={s.top} r={3.5} fill="var(--bg-body)" stroke="var(--brand-cyan)" strokeWidth={1.5} />
+      ))}
+
+      {stack.map((s, i) => (
+        <text key={i} x={s.x} y={PAD_T + PLOT_H + 22} textAnchor="middle" className="rv-xlabel">{s.b.label}</text>
+      ))}
+
+      <line x1={PAD_L} x2={PAD_L + plotW} y1={PAD_T + PLOT_H} y2={PAD_T + PLOT_H} stroke="var(--border)" strokeWidth={1} />
+
+      {stack.map((s, i) => (
+        <rect
+          key={i}
+          x={s.x - hitW / 2}
+          y={PAD_T}
+          width={hitW}
+          height={PLOT_H}
+          fill="transparent"
+          style={{ cursor: 'pointer' }}
+          onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); onHover(s.b, r.left + r.width / 2, r.top) }}
+          onMouseLeave={onLeave}
+          onClick={() => onPointClick(s.b.key, s.b.label, 'total')}
+        />
+      ))}
+    </svg>
+  )
+})
+
+function ChartTooltip({ hover, containerRef }: { hover: HoverState; containerRef: RefObject<HTMLDivElement | null> }) {
+  const rect = containerRef.current?.getBoundingClientRect()
+  if (!rect) return null
+  const relX = hover.x - rect.left
+  const relY = hover.y - rect.top
+  const TIP_W = 210
+  const flip = relX + 12 + TIP_W > rect.width
+  const left = flip ? Math.max(0, relX - TIP_W - 12) : relX + 12
+  const top = Math.min(Math.max(8, relY + 8), Math.max(8, rect.height - 150))
+  return (
+    <div className="rv-tip" style={{ left, top }}>
+      <div className="rv-tip-t">{hover.bucket.label}</div>
+      {LEGEND_ORDER.map(cat => (
+        <div key={cat} className="rv-tip-r">
+          <span className="rv-tip-lab"><span className="rv-tip-sw" style={{ background: CAT_COLORS[cat] }} />{CAT_LABELS[cat]}</span>
+          <span className="rv-tip-num">{fmt(hover.bucket[cat])}</span>
+        </div>
+      ))}
+      <div className="rv-tip-r rv-tip-tot">
+        <span className="rv-tip-lab">Total</span>
+        <span className="rv-tip-num">{fmt(hover.bucket.total)}</span>
+      </div>
+      <div className="rv-tip-hint">click to drill down →</div>
+    </div>
+  )
+}
+
 function DrilldownDialog({ label, category, contributions, onClose }: {
   label: string
   category: CatKey | 'total'
@@ -490,112 +433,62 @@ function DrilldownDialog({ label, category, contributions, onClose }: {
     const map = new Map<string, RevenueProjectContribution>()
     for (const c of contributions) {
       const existing = map.get(c.project_id)
-      if (existing) {
-        existing.amount += c.amount
-      } else {
-        map.set(c.project_id, { ...c })
-      }
+      if (existing) existing.amount += c.amount
+      else map.set(c.project_id, { ...c })
     }
     return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name) || b.amount - a.amount)
   }, [contributions])
 
   const total = grouped.reduce((sum, c) => sum + c.amount, 0)
-
-  // Determine the accent color for the header
-  const accentColor = category === 'total'
-    ? 'var(--text-primary)'
-    : CAT_COLORS[category]
+  void category
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(0, 0, 0, 0.6)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '2rem',
-      }}
+    <Dialog
+      open
+      onOpenChange={next => { if (!next) onClose() }}
+      title={label}
+      ariaLabel={label}
+      width={900}
+      footer={<><span /><Button variant="secondary" size="sm" onClick={onClose}>Close</Button></>}
     >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)',
-          borderRadius: 8, width: '100%', maxWidth: 700, maxHeight: '80vh',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        }}
-      >
-        {/* Header */}
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-subtle)',
-        }}>
-          <h3 style={{ margin: 0, fontSize: '1rem', color: accentColor }}>{label}</h3>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none', border: 'none', color: 'var(--text-muted)',
-              fontSize: '1.2rem', cursor: 'pointer', padding: '0.25rem 0.5rem',
-              lineHeight: 1,
-            }}
-            title="Close"
-          >
-            &times;
-          </button>
-        </div>
-
-        {/* Table */}
-        <div style={{ overflowY: 'auto', padding: '0.75rem 1.25rem 1.25rem' }}>
-          {grouped.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem 0' }}>
-              No project contributions for this period.
-            </p>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Client</th>
-                  <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Project Name</th>
-                  <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Status</th>
-                  <th style={{ textAlign: 'right', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {grouped.map((c) => {
-                  const statusCat = statusCategory(c.status)
-                  return (
-                    <tr key={c.project_id}>
-                      <td style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-subtle)' }}>{c.client_name}</td>
-                      <td style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', borderBottom: '1px solid var(--border-subtle)' }}>
-                        <Link to={`/projects/${c.project_id}`} style={{ color: 'var(--brand-green)', textDecoration: 'none' }}>{c.project_name}</Link>
-                      </td>
-                      <td style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', color: CAT_COLORS[statusCat], borderBottom: '1px solid var(--border-subtle)' }}>{CAT_LABELS[statusCat]}</td>
-                      <td style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', color: 'var(--text-primary)', textAlign: 'right', borderBottom: '1px solid var(--border-subtle)' }}>{fmt(c.amount)}</td>
-                    </tr>
-                  )
-                })}
-                {/* Total row */}
-                <tr>
-                  <td colSpan={3} style={{ padding: '0.5rem 0.5rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', borderTop: '2px solid var(--border)' }}>Total</td>
-                  <td style={{ padding: '0.5rem 0.5rem', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', textAlign: 'right', borderTop: '2px solid var(--border)' }}>{fmt(total)}</td>
-                </tr>
-              </tbody>
-            </table>
-          )}
-
-          {/* Close button at bottom-right */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
-            <button
-              onClick={onClose}
-              style={{
-                ...btnStyle,
-                padding: '0.5rem 1.2rem',
-              }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
+      <div className="rv rv-drilltbl">
+        {grouped.length === 0 ? (
+          <p className="rv-dempty">No project contributions for this period.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th className="cap">Client</th>
+                <th className="grow">Project Name</th>
+                <th>Status</th>
+                <th className="num">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grouped.map(c => {
+                const statusCat = statusCategory(c.status)
+                const isLegacy = c.project_id.startsWith('legacy:')
+                return (
+                  <tr key={c.project_id}>
+                    <td className="cap">{c.client_name}</td>
+                    <td className="grow">
+                      {isLegacy
+                        ? <span title={c.project_name}>{c.project_name}</span>
+                        : <Link to={`/projects/${c.project_id}`} className="rv-plink" title={c.project_name}>{c.project_name}</Link>}
+                    </td>
+                    <td style={{ color: CAT_COLORS[statusCat] }}>{CAT_LABELS[statusCat]}</td>
+                    <td className="num mono rv-amt">{fmt(c.amount)}</td>
+                  </tr>
+                )
+              })}
+              <tr className="rv-tot">
+                <td colSpan={3} className="cap">Total</td>
+                <td className="num mono rv-amt">{fmt(total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        )}
       </div>
-    </div>
+    </Dialog>
   )
 }

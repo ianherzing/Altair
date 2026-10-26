@@ -1,135 +1,232 @@
-import { useEffect, useState, useRef } from 'react'
+import { memo, useCallback, useDeferredValue, useMemo, useRef, useState, type ReactNode } from 'react'
 import { downloadCsv } from '../lib/csv'
+import { LoadingState } from '../components/LoadingState'
+import { PageTitle, MultiSelect, Button } from '../components/ui'
+import { fmtCurrency, fmtShort } from '../lib/financeUtils'
 import { useHistoricalsData } from '../hooks/useHistoricalsData'
 import type { SortField } from '../hooks/useHistoricalsData'
+import { HistoricalsSkeleton } from './HistoricalsSkeleton'
+import './Historicals.css'
 
-const fmt = (n: number) => '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const fmtShort = (n: number) => {
-  if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return '$' + (n / 1_000).toFixed(0) + 'K'
-  return '$' + n.toFixed(0)
+const CHART_H = 320
+const PAD_L = 64
+const PAD_R = 28
+const PAD_T = 28
+const PAD_B = 42
+const PLOT_H = CHART_H - PAD_T - PAD_B
+const MIN_BAND = 110
+
+interface Seg { key: string; label: string; val: number; colorVar: string }
+interface Bucket { label: string; total: number; segs: Seg[] }
+interface HoverState { bucket: Bucket; left: number; top: number }
+
+const gradId = (colorVar: string) => 'histg-' + colorVar.replace(/[^a-z]/gi, '')
+
+function Kpi({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="hist-kpi">
+      <div className="hist-kpi-l">{label}</div>
+      <div className={`hist-kpi-v${accent ? ' accent' : ''}`}>{value}</div>
+    </div>
+  )
 }
 
-/* ------------------------------------------------------------------ */
-/*  Multi-select dropdown                                              */
-/* ------------------------------------------------------------------ */
-function MultiSelect({ label, options, selected, onChange, maxWidth }: {
-  label: string
-  options: string[]
-  selected: Set<string>
-  onChange: (next: Set<string>) => void
-  maxWidth?: number
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+interface ChartProps {
+  buckets: Bucket[]
+  width: number
+  maxVal: number
+  fmtAxis: (n: number) => string
+  fmtTotal: (n: number) => string
+  onHover: (b: Bucket, x: number, y: number) => void
+  onLeave: () => void
+}
 
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  function toggle(val: string) {
-    const next = new Set(selected)
-    if (next.has(val)) next.delete(val)
-    else next.add(val)
-    onChange(next)
-  }
-
-  const displayLabel = selected.size === 0
-    ? label
-    : selected.size <= 2
-      ? [...selected].join(', ')
-      : `${selected.size} selected`
+const HistBarChart = memo(function HistBarChart({ buckets, width, maxVal, fmtAxis, fmtTotal, onHover, onLeave }: ChartProps) {
+  const n = buckets.length
+  const plotW = width - PAD_L - PAD_R
+  const band = plotW / Math.max(n, 1)
+  const bw = Math.min(54, band * 0.42)
+  const safeMax = maxVal > 0 ? maxVal : 1
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(p => safeMax * p)
+  const colorVars = [...new Set(buckets[0]?.segs.map(s => s.colorVar) ?? [])]
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        style={{
-          padding: '0.4rem 0.6rem',
-          background: 'var(--bg-card)',
-          color: selected.size ? 'var(--text-primary)' : 'var(--text-muted)',
-          border: '1px solid var(--border)',
-          borderRadius: 4,
-          cursor: 'pointer',
-          whiteSpace: 'nowrap',
-          maxWidth: maxWidth || 260,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          fontSize: '0.85rem',
-          textAlign: 'left',
-          minWidth: 100,
-        }}
-      >
-        {displayLabel} <span style={{ fontSize: '0.7rem' }}>{open ? '\u25B2' : '\u25BC'}</span>
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute',
-          top: '100%',
-          left: 0,
-          zIndex: 100,
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
-          borderRadius: 4,
-          maxHeight: 300,
-          overflowY: 'auto',
-          minWidth: 180,
-          maxWidth: maxWidth || 320,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        }}>
-          {selected.size > 0 && (
-            <button
-              type="button"
-              onClick={() => onChange(new Set())}
-              style={{
-                width: '100%',
-                padding: '0.4rem 0.6rem',
-                background: 'transparent',
-                color: 'var(--text-muted)',
-                border: 'none',
-                borderBottom: '1px solid var(--border)',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-                textAlign: 'left',
-              }}
-            >Clear all</button>
-          )}
-          {options.map(opt => (
-            <label
-              key={opt}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                padding: '0.35rem 0.6rem',
-                cursor: 'pointer',
-                fontSize: '0.83rem',
-                color: 'var(--text-primary)',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={selected.has(opt)}
-                onChange={() => toggle(opt)}
-                style={{ accentColor: '#E63948' }}
-              />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt}</span>
-            </label>
-          ))}
+    <svg width={width} height={CHART_H} viewBox={`0 0 ${width} ${CHART_H}`}>
+      <defs>
+        {colorVars.map(cv => (
+          <linearGradient key={cv} id={gradId(cv)} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" style={{ stopColor: cv, stopOpacity: 0.46 }} />
+            <stop offset="100%" style={{ stopColor: cv, stopOpacity: 0.10 }} />
+          </linearGradient>
+        ))}
+      </defs>
+
+      {yTicks.map((val, i) => {
+        const y = PAD_T + PLOT_H - (val / safeMax) * PLOT_H
+        return (
+          <g key={i}>
+            <line x1={PAD_L} x2={PAD_L + plotW} y1={y} y2={y} stroke="var(--border-subtle)" strokeWidth={1} opacity={i === 0 ? 0 : 0.6} />
+            <text x={PAD_L - 10} y={y + 3} textAnchor="end" className="hist-axis">{fmtAxis(val)}</text>
+          </g>
+        )
+      })}
+
+      {buckets.map((b, i) => {
+        const cx = PAD_L + band * (i + 0.5)
+        let yb = PAD_T + PLOT_H
+        const rects: ReactNode[] = []
+        b.segs.forEach((s, si) => {
+          const h = (s.val / safeMax) * PLOT_H
+          const top = yb - h
+          const topR = si === b.segs.length - 1 ? 3 : 0
+          rects.push(<rect key={`f-${s.key}`} x={cx - bw / 2} y={top} width={bw} height={Math.max(h, 0)} rx={topR} fill={`url(#${gradId(s.colorVar)})`} />)
+          if (h > 2) rects.push(<rect key={`r-${s.key}`} x={cx - bw / 2} y={top} width={bw} height={2} rx={topR} style={{ fill: s.colorVar }} opacity={0.85} />)
+          yb -= h
+        })
+        return (
+          <g key={b.label}>
+            {rects}
+            <text x={cx} y={yb - 10} textAnchor="middle" className="hist-vlabel">{fmtTotal(b.total)}</text>
+            <text x={cx} y={PAD_T + PLOT_H + 24} textAnchor="middle" className="hist-xlabel">{b.label}</text>
+            <rect
+              x={PAD_L + band * i}
+              y={PAD_T}
+              width={band}
+              height={PLOT_H}
+              fill="transparent"
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); onHover(b, r.left + r.width / 2, r.top) }}
+              onMouseLeave={onLeave}
+            />
+          </g>
+        )
+      })}
+
+      <line x1={PAD_L} x2={PAD_L + plotW} y1={PAD_T + PLOT_H} y2={PAD_T + PLOT_H} stroke="var(--border)" strokeWidth={1} />
+    </svg>
+  )
+})
+
+function ChartTooltip({ hover }: { hover: HoverState }) {
+  return (
+    <div className="hist-tip" style={{ left: hover.left, top: hover.top }}>
+      <div className="hist-tip-t">{hover.bucket.label}</div>
+      {hover.bucket.segs.map(s => (
+        <div key={s.key} className="hist-tip-r">
+          <span className="hist-tip-lab"><span className="hist-tip-sw" style={{ background: s.colorVar }} />{s.label}</span>
+          <span className="hist-tip-num">{fmtCurrency(s.val)}</span>
+        </div>
+      ))}
+      {hover.bucket.segs.length > 1 && (
+        <div className="hist-tip-r hist-tip-tot">
+          <span className="hist-tip-lab">Total</span>
+          <span className="hist-tip-num">{fmtCurrency(hover.bucket.total)}</span>
         </div>
       )}
     </div>
   )
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main component                                                     */
-/* ------------------------------------------------------------------ */
+function ChartArea({ buckets, maxVal, fmtAxis, fmtTotal }: {
+  buckets: Bucket[]
+  maxVal: number
+  fmtAxis: (n: number) => string
+  fmtTotal: (n: number) => string
+}) {
+  const chartRef = useRef<HTMLDivElement | null>(null)
+  const [containerW, setContainerW] = useState(0)
+  const setChartRef = useCallback((node: HTMLDivElement | null) => {
+    chartRef.current = node
+    if (!node) return
+    setContainerW(node.clientWidth)
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(entries => setContainerW(entries[0].contentRect.width))
+    ro.observe(node)
+    return () => ro.disconnect()
+  }, [])
+
+  const n = buckets.length
+  const width = useMemo(() => {
+    const inner = Math.max(0, containerW - PAD_L - PAD_R)
+    const plotW = Math.max(inner, n * MIN_BAND, MIN_BAND)
+    return PAD_L + PAD_R + plotW
+  }, [containerW, n])
+
+  const [hover, setHover] = useState<HoverState | null>(null)
+  const onHover = useCallback((bucket: Bucket, x: number, y: number) => {
+    const rect = chartRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const relX = x - rect.left
+    const relY = y - rect.top
+    const tipW = 210
+    const flip = relX + 12 + tipW > rect.width
+    const left = Math.max(0, flip ? relX - tipW - 12 : relX + 12)
+    const top = Math.min(Math.max(8, relY + 8), Math.max(8, rect.height - 150))
+    setHover({ bucket, left, top })
+  }, [])
+  const onLeave = useCallback(() => setHover(null), [])
+
+  return (
+    <div className="hist-chart" ref={setChartRef}>
+      <div className="hist-chart-scroll">
+        <HistBarChart buckets={buckets} width={width} maxVal={maxVal} fmtAxis={fmtAxis} fmtTotal={fmtTotal} onHover={onHover} onLeave={onLeave} />
+      </div>
+      {hover && <ChartTooltip hover={hover} />}
+    </div>
+  )
+}
+
+const ROW_H_DEFAULT = 40
+const OVERSCAN = 10
+
+function WindowedTable({ rowCount, colCount, colgroup, header, renderRow }: {
+  rowCount: number
+  colCount: number
+  colgroup: ReactNode
+  header: ReactNode
+  renderRow: (index: number) => ReactNode
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const [viewRange, setViewRange] = useState({ start: 0, end: OVERSCAN * 2 })
+
+  const recompute = useCallback(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const rh = ROW_H_DEFAULT
+    const vh = el.clientHeight || 560
+    const start = Math.max(0, Math.floor(el.scrollTop / rh) - OVERSCAN)
+    const end = Math.min(rowCount, Math.ceil((el.scrollTop + vh) / rh) + OVERSCAN)
+    setViewRange(prev => (prev.start === start && prev.end === end ? prev : { start, end }))
+  }, [rowCount])
+
+  const setWrapRef = useCallback((el: HTMLDivElement | null) => {
+    wrapRef.current = el
+    if (el) recompute()
+  }, [recompute])
+
+  const start = Math.min(viewRange.start, Math.max(0, rowCount))
+  const end = Math.min(viewRange.end, rowCount)
+  const padTop = start * ROW_H_DEFAULT
+  const padBottom = Math.max(0, (rowCount - end) * ROW_H_DEFAULT)
+
+  const rows: ReactNode[] = []
+  for (let i = start; i < end; i++) rows.push(renderRow(i))
+
+  return (
+    <div className="hist-tbl-wrap" ref={setWrapRef} onScroll={recompute}>
+      <table>
+        {colgroup}
+        <thead>{header}</thead>
+        <tbody>
+          {padTop > 0 && <tr className="hist-spacer" aria-hidden="true"><td colSpan={colCount} style={{ height: padTop }} /></tr>}
+          {rows}
+          {padBottom > 0 && <tr className="hist-spacer" aria-hidden="true"><td colSpan={colCount} style={{ height: padBottom }} /></tr>}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export function Historicals() {
   const {
     canWrite,
@@ -139,7 +236,6 @@ export function Historicals() {
     selectedClients, setSelectedClients,
     sowFilter, setSowFilter,
     search, setSearch,
-    view, setView,
     years, months, clients,
     filtered, sorted,
     yearlyData, maxRevenue,
@@ -148,228 +244,123 @@ export function Historicals() {
     clearAll, toggleSort, sortIcon,
   } = useHistoricalsData()
 
+  const buckets = useMemo<Bucket[]>(() => yearlyData.map(d => ({
+    label: String(d.year),
+    total: d.revenue,
+    segs: [{ key: 'revenue', label: 'Revenue', val: d.revenue, colorVar: 'var(--brand-red)' }],
+  })), [yearlyData])
+
+  const deferredSorted = useDeferredValue(sorted)
+
   function handleExport() {
-    const csvRows = sorted.map(r => ({
+    downloadCsv(sorted.map(r => ({
       Year: r.year,
       Month: r.month,
       Client: r.client_name,
       Project: r.project_name,
       SOW: r.sow_number,
       Revenue: r.revenue,
-    }))
-    downloadCsv(csvRows, 'historical-revenue.csv')
+    })), 'historical-revenue.csv')
   }
 
   if (!canWrite) {
-    return (
-      <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>
-        Access restricted to PMO administrators.
-      </div>
-    )
+    return <div className="hist"><div className="hist-empty">Access restricted to PMO administrators.</div></div>
   }
-
-  if (loading) return <p style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading historical revenue...</p>
-  if (error) return <div style={{ padding: '2rem', color: '#E63948' }}>Error: {error}</div>
+  if (loading) return <HistoricalsSkeleton />
+  if (error) return <LoadingState loading={false} error={error} retry={() => window.location.reload()} message="Loading historical revenue..." />
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 1400 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)' }}>Historical Revenue</h1>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button
-            onClick={() => setView('chart')}
-            style={{
-              padding: '0.4rem 0.8rem',
-              background: view === 'chart' ? 'var(--accent)' : 'var(--bg-card)',
-              color: view === 'chart' ? '#fff' : 'var(--text-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
-              cursor: 'pointer',
-            }}
-          >Chart</button>
-          <button
-            onClick={() => setView('table')}
-            style={{
-              padding: '0.4rem 0.8rem',
-              background: view === 'table' ? 'var(--accent)' : 'var(--bg-card)',
-              color: view === 'table' ? '#fff' : 'var(--text-primary)',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
-              cursor: 'pointer',
-            }}
-          >Table</button>
-          <button onClick={handleExport} style={{
-            padding: '0.4rem 0.8rem',
-            background: 'var(--bg-card)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border)',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}>Export CSV</button>
-        </div>
+    <div className="hist">
+      <div className="hist-head">
+        <PageTitle title="Historical Revenue" meta={`(${yearlyData.length} years)`} style={{ margin: 0 }} />
       </div>
 
-      {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1rem' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Total Revenue</div>
-          <div style={{ color: '#E63948', fontSize: '1.5rem', fontWeight: 700 }}>{fmtShort(totalRevenue)}</div>
-        </div>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1rem' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Unique Clients</div>
-          <div style={{ color: 'var(--text-primary)', fontSize: '1.5rem', fontWeight: 700 }}>{uniqueClients}</div>
-        </div>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1rem' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Unique SOWs</div>
-          <div style={{ color: 'var(--text-primary)', fontSize: '1.5rem', fontWeight: 700 }}>{uniqueSOWs}</div>
-        </div>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1rem' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '0.25rem' }}>Records</div>
-          <div style={{ color: 'var(--text-primary)', fontSize: '1.5rem', fontWeight: 700 }}>{filtered.length.toLocaleString()}</div>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <MultiSelect label="All Years" options={years} selected={selectedYears} onChange={setSelectedYears} maxWidth={180} />
-        <MultiSelect label="All Months" options={months} selected={selectedMonths} onChange={setSelectedMonths} maxWidth={200} />
-        <MultiSelect label="All Clients" options={clients} selected={selectedClients} onChange={setSelectedClients} maxWidth={300} />
-
+      <div className="hist-filters">
+        <MultiSelect label="Years" options={years.map(y => ({ value: y, label: y }))} value={[...selectedYears]} onChange={next => setSelectedYears(new Set(next))} />
+        <MultiSelect label="Months" options={months.map(m => ({ value: m, label: m }))} value={[...selectedMonths]} onChange={next => setSelectedMonths(new Set(next))} />
+        <MultiSelect label="Clients" options={clients.map(c => ({ value: c, label: c }))} value={[...selectedClients]} onChange={next => setSelectedClients(new Set(next))} searchable />
         <input
           type="text"
-          placeholder="Filter by SOW..."
+          className="hist-search"
+          placeholder="Filter by SOW…"
           value={sowFilter}
           onChange={e => setSowFilter(e.target.value)}
-          style={{
-            padding: '0.4rem 0.6rem',
-            background: 'var(--bg-card)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border)',
-            borderRadius: 4,
-            width: 160,
-            fontSize: '0.85rem',
-          }}
+          aria-label="Filter by SOW"
         />
-
         <input
           type="text"
-          placeholder="Search..."
+          className="hist-search"
+          placeholder="Search…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{
-            padding: '0.4rem 0.6rem',
-            background: 'var(--bg-card)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border)',
-            borderRadius: 4,
-            width: 200,
-            fontSize: '0.85rem',
-          }}
+          aria-label="Search historical revenue"
         />
-
-        {hasFilters && (
-          <button
-            onClick={clearAll}
-            style={{
-              padding: '0.4rem 0.6rem',
-              background: 'transparent',
-              color: 'var(--text-muted)',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-            }}
-          >Clear all</button>
-        )}
+        {!!hasFilters && <Button variant="ghost" size="sm" onClick={clearAll}>Clear all</Button>}
+        <span className="hist-filters-spacer" aria-hidden="true" />
+        <Button variant="ghost" size="sm" onClick={handleExport} title="Export as CSV">Export CSV</Button>
       </div>
 
-      {/* Chart view */}
-      {view === 'chart' && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '1.5rem', marginBottom: '1.5rem' }}>
-          <h2 style={{ margin: '0 0 1rem', fontSize: '1.1rem', color: 'var(--text-primary)' }}>Revenue by Year</h2>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.5rem', height: 300 }}>
-            {yearlyData.map(d => {
-              const pct = (d.revenue / maxRevenue) * 100
-              return (
-                <div key={d.year} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: 4 }}>{fmtShort(d.revenue)}</div>
-                  <div
-                    style={{
-                      width: '100%',
-                      maxWidth: 80,
-                      height: `${Math.max(pct, 2)}%`,
-                      background: '#E63948',
-                      borderRadius: '4px 4px 0 0',
-                      transition: 'height 0.3s ease',
-                    }}
-                    title={fmt(d.revenue)}
-                  />
-                  <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem', marginTop: 6, fontWeight: 600 }}>{d.year}</div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+      <div className="hist-kpis">
+        <Kpi label="Total Revenue" value={fmtShort(totalRevenue)} accent />
+        <Kpi label="Unique Clients" value={String(uniqueClients)} />
+        <Kpi label="Unique SOWs" value={String(uniqueSOWs)} />
+        <Kpi label="Records" value={filtered.length.toLocaleString()} />
+      </div>
+
+      <div className="hist-sect">
+        <h3>Revenue by year <span className="hist-cnt">{yearlyData.length} years</span></h3>
+      </div>
+      {buckets.length === 0 ? (
+        <div className="hist-empty">No historical revenue to chart for the current filters.</div>
+      ) : (
+        <ChartArea buckets={buckets} maxVal={maxRevenue} fmtAxis={fmtShort} fmtTotal={fmtShort} />
       )}
 
-      {/* Table view */}
-      {view === 'table' && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto', maxHeight: 600, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 1 }}>
-                  {([
-                    ['year', 'Year'],
-                    ['month', 'Month'],
-                    ['client_name', 'Client'],
-                    ['project_name', 'Project'],
-                    ['sow_number', 'SOW'],
-                    ['revenue', 'Revenue'],
-                  ] as [SortField, string][]).map(([field, label]) => (
-                    <th
-                      key={field}
-                      onClick={() => toggleSort(field)}
-                      style={{
-                        padding: '0.6rem 0.75rem',
-                        textAlign: field === 'revenue' ? 'right' : 'left',
-                        color: 'var(--text-muted)',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        userSelect: 'none',
-                      }}
-                    >
-                      {label}{sortIcon(field)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.slice(0, 1000).map(r => (
-                  <tr key={r.id} style={{ borderBottom: '1px solid var(--border-light, rgba(255,255,255,0.05))' }}>
-                    <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-primary)' }}>{r.year}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-primary)' }}>{r.month}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-primary)' }}>{r.client_name}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-muted)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.project_name}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{r.sow_number}</td>
-                    <td style={{ padding: '0.5rem 0.75rem', color: '#E63948', textAlign: 'right', fontWeight: 500 }}>{fmt(r.revenue)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              {sorted.length > 1000 && (
-                <tfoot>
-                  <tr>
-                    <td colSpan={6} style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                      Showing 1,000 of {sorted.length.toLocaleString()} rows. Use filters to narrow results.
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </div>
-      )}
+      <div className="hist-sect gap">
+        <h3>Records <span className="hist-cnt">{sorted.length.toLocaleString()} rows</span></h3>
+      </div>
+      <WindowedTable
+        key={deferredSorted.length}
+        rowCount={deferredSorted.length}
+        colCount={6}
+        colgroup={(
+          <colgroup>
+            <col style={{ width: 76 }} />
+            <col style={{ width: 116 }} />
+            <col style={{ width: '22%' }} />
+            <col />
+            <col style={{ width: 132 }} />
+            <col style={{ width: 140 }} />
+          </colgroup>
+        )}
+        header={(
+          <tr>
+            {([
+              ['year', 'Year', 'cap'],
+              ['month', 'Month', ''],
+              ['client_name', 'Client', ''],
+              ['project_name', 'Project', 'grow'],
+              ['sow_number', 'SOW', ''],
+              ['revenue', 'Revenue', 'num th-amt'],
+            ] as [SortField, string, string][]).map(([field, label, cls]) => (
+              <th key={field} className={cls} onClick={() => toggleSort(field)}>{label}{sortIcon(field)}</th>
+            ))}
+          </tr>
+        )}
+        renderRow={i => {
+          const r = deferredSorted[i]
+          return (
+            <tr key={r.id} className={i % 2 ? 'zebra' : undefined}>
+              <td className="cap">{r.year}</td>
+              <td>{r.month}</td>
+              <td title={r.client_name}>{r.client_name}</td>
+              <td className="grow" title={r.project_name}>{r.project_name}</td>
+              <td className="mono">{r.sow_number}</td>
+              <td className="amt">{fmtCurrency(r.revenue)}</td>
+            </tr>
+          )
+        }}
+      />
     </div>
   )
 }

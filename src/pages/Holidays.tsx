@@ -2,8 +2,12 @@ import { useState } from 'react'
 import { api } from '../lib/api'
 import { useLoadData } from '../lib/useLoadData'
 import { LoadingState } from '../components/LoadingState'
+import { PageTitle, Button, Dialog, Input, DatePicker } from '../components/ui'
+import { SearchableSelect } from '../components/SearchableSelect'
 import { useIsPmoAdmin } from '../lib/permissions'
 import type { Holiday } from '../types/database'
+import { HolidaysSkeleton } from './HolidaysSkeleton'
+import './Holidays.css'
 
 const COUNTRIES = ['US', 'BR', 'CA', 'ES', 'IE', 'NZ', 'SG', 'AE']
 
@@ -17,6 +21,19 @@ const COUNTRY_LABELS: Record<string, string> = {
   SG: 'Singapore',
   AE: 'UAE (Dubai)',
 }
+
+const COUNTRY_FLAGS: Record<string, string> = {
+  US: '🇺🇸',
+  BR: '🇧🇷',
+  CA: '🇨🇦',
+  ES: '🇪🇸',
+  IE: '🇮🇪',
+  NZ: '🇳🇿',
+  SG: '🇸🇬',
+  AE: '🇦🇪',
+}
+
+const FILTER_YEARS = [2025, 2026, 2027, 2028]
 
 const EMPTY_FORM = {
   country: 'US',
@@ -49,8 +66,7 @@ export function Holidays() {
     await loadHolidays()
   }, [], 8000)
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleCreate() {
     setSaving(true)
 
     try {
@@ -79,7 +95,6 @@ export function Holidays() {
     }
   }
 
-
   const filtered = holidays.filter(h => {
     if (filterCountry && h.country !== filterCountry) return false
     if (filterYear) {
@@ -89,202 +104,249 @@ export function Holidays() {
     return true
   })
 
-  // Group by country
   const grouped = new Map<string, Holiday[]>()
   for (const h of filtered) {
     const list = grouped.get(h.country) || []
     list.push(h)
     grouped.set(h.country, list)
   }
+  const orderedCountries = [
+    ...COUNTRIES.filter(c => grouped.has(c)),
+    ...[...grouped.keys()].filter(c => !COUNTRIES.includes(c)).sort(),
+  ]
 
-  if (loading || error) return <LoadingState loading={loading} error={error} retry={retry} message="Loading holidays..." />
+  const recurringCount = filtered.filter(h => h.recurring).length
+
+  if (loading) return <HolidaysSkeleton />
+  if (error) return <LoadingState loading={false} error={error} retry={retry} message="Loading holidays..." />
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <h2 style={{ margin: 0 }}>Holidays</h2>
-          <button onClick={() => setShowInfo(!showInfo)} style={{
-            background: 'transparent', border: '1px solid var(--border-subtle)',
-            color: 'var(--text-muted)', borderRadius: '50%', width: 24, height: 24,
-            fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }} title="How holidays work">i</button>
+    <div className="hol">
+      <div className="hol-head">
+        <div className="hol-titlewrap">
+          <PageTitle title="Holidays" style={{ margin: 0 }} />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hol-info"
+            aria-label="How holidays work"
+            title="How holidays work"
+            onClick={() => setShowInfo(true)}
+          >
+            i
+          </Button>
         </div>
         {isPmoAdmin && (
-          <button onClick={() => { setForm(EMPTY_FORM); setShowForm(!showForm) }}>
-            {showForm ? 'Cancel' : '+ Add Holiday'}
-          </button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="hol-addbtn"
+            aria-expanded={showForm}
+            onClick={() => { setForm(EMPTY_FORM); setShowForm(v => !v) }}
+          >
+            <span className="hol-add-plus" aria-hidden="true">+</span>Add Holiday
+          </Button>
         )}
       </div>
 
-      {showInfo && (
-        <div style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
-          borderRadius: 8, padding: '1.25rem', marginBottom: '1.5rem', fontSize: '0.8rem',
-          color: 'var(--text-secondary)', lineHeight: 1.6,
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-            <h3 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-primary)' }}>How Holidays Work</h3>
-            <button onClick={() => setShowInfo(false)} style={{
-              background: 'transparent', border: 'none', color: 'var(--text-muted)',
-              cursor: 'pointer', fontSize: '1rem',
-            }}>x</button>
-          </div>
-
-          <p style={{ margin: '0 0 0.75rem' }}>
-            <strong style={{ color: 'var(--brand-green)' }}>Data Source:</strong>{' '}
-            Holidays are loaded into Supabase — edit the list via the Holidays page.
-            Future years are synced automatically via a GitHub Actions workflow (runs yearly on Jan 2) using the{' '}
-            <span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>Nager.Date</span> public API for most countries.
-          </p>
-
-          <p style={{ margin: '0 0 0.75rem' }}>
-            <strong style={{ color: 'var(--brand-green)' }}>Countries Covered:</strong>{' '}
-            United States, Brazil, Canada, Spain, Ireland, New Zealand, Singapore, and UAE (Dubai).
-          </p>
-
-          <p style={{ margin: '0 0 0.75rem' }}>
-            <strong style={{ color: 'var(--brand-green)' }}>Resourcing Impact:</strong>{' '}
-            Each consultant's country (pulled from your HR system) is matched against this holiday calendar.
-            When a holiday falls on a weekday, that day is subtracted from the consultant's available hours
-            in the Resourcing view — e.g. a US consultant gets 32 available hours in a week with one holiday.
-          </p>
-
-          <p style={{ margin: '0 0 0.75rem' }}>
-            <strong style={{ color: 'var(--brand-green)' }}>Manual Adjustments:</strong>{' '}
-            Use "+ Add Holiday" to add holidays that aren't covered by the automatic sync (e.g. UAE Islamic holidays
-            which shift yearly, or company-specific days off). Use the "Delete" button to remove incorrect entries.
-          </p>
-
-          <p style={{ margin: 0, fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-            Sync script: <span style={{ fontFamily: 'monospace' }}>scripts/sync-holidays.ts</span> &bull;
-            Workflow: <span style={{ fontFamily: 'monospace' }}>.github/workflows/sync-holidays.yml</span> &bull;
-            Migration: <span style={{ fontFamily: 'monospace' }}>supabase/migration_v16_2026_holidays.sql</span>
-          </p>
-        </div>
-      )}
-
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem' }}>
-        <select value={filterCountry} onChange={e => setFilterCountry(e.target.value)} style={filterStyle}>
-          <option value="">All Countries</option>
-          {COUNTRIES.map(c => <option key={c} value={c}>{COUNTRY_LABELS[c] || c}</option>)}
-        </select>
-        <select value={filterYear} onChange={e => setFilterYear(e.target.value)} style={filterStyle}>
-          {[2025, 2026, 2027, 2028].map(y => (
-            <option key={y} value={String(y)}>{y}</option>
-          ))}
-        </select>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          {filtered.length} holidays
+      <div className="hol-filters">
+        <SearchableSelect
+          variant="ghost"
+          value={filterCountry}
+          onChange={setFilterCountry}
+          options={[{ value: '', label: 'All Countries' }, ...COUNTRIES.map(c => ({ value: c, label: COUNTRY_LABELS[c] || c }))]}
+          placeholder="Country"
+        />
+        <SearchableSelect
+          variant="ghost"
+          value={filterYear}
+          onChange={setFilterYear}
+          options={FILTER_YEARS.map(y => ({ value: String(y), label: String(y) }))}
+          placeholder="Year"
+        />
+        <span className="hol-meta">
+          <b>{filtered.length}</b> {filtered.length === 1 ? 'holiday' : 'holidays'}
+          <span className="hol-tdiv" aria-hidden="true" />
+          <b>{recurringCount}</b> annual · <b>{filtered.length - recurringCount}</b> one-off
         </span>
       </div>
 
-      {showForm && (
-        <form onSubmit={handleCreate} style={{
-          background: 'var(--bg-card)', padding: '1.5rem', borderRadius: 8,
-          marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap',
-        }}>
-          <div>
-            <label style={labelStyle}>Country *</label>
-            <select style={inputStyle} value={form.country}
-              onChange={e => setForm({ ...form, country: e.target.value })}>
-              {COUNTRIES.map(c => <option key={c} value={c}>{COUNTRY_LABELS[c] || c}</option>)}
-            </select>
+      {isPmoAdmin && showForm && (
+        <div className="hol-addbar">{/* not a <form>: the shared DatePicker uses
+          buttons that would submit a wrapping form on calendar clicks */}
+          <div className="hol-fld hol-fld-country">
+            <label className="hol-flabel">Country</label>
+            <SearchableSelect
+              value={form.country}
+              onChange={val => setForm({ ...form, country: val })}
+              options={COUNTRIES.map(c => ({ value: c, label: COUNTRY_LABELS[c] || c }))}
+              placeholder="Country"
+              style={{ width: '100%' }}
+            />
           </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <label style={labelStyle}>Holiday Name *</label>
-            <input style={inputStyle} required value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })} />
+          <div className="hol-fld hol-fld-name">
+            <label className="hol-flabel">Holiday name</label>
+            <Input
+              required
+              autoComplete="off"
+              placeholder="e.g. National Day"
+              value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              onKeyDown={e => { if (e.key === 'Enter' && form.name.trim() && form.date) { e.preventDefault(); handleCreate() } }}
+            />
           </div>
-          <div>
-            <label style={labelStyle}>Date *</label>
-            <input style={inputStyle} required type="date" value={form.date}
-              onChange={e => setForm({ ...form, date: e.target.value })} />
+          <div className="hol-fld hol-fld-date">
+            <label className="hol-flabel">Date</label>
+            <DatePicker
+              value={form.date}
+              onChange={val => setForm({ ...form, date: val })}
+              ariaLabel="Holiday date"
+            />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '0.25rem' }}>
-            <input type="checkbox" checked={form.recurring}
-              onChange={e => setForm({ ...form, recurring: e.target.checked })} />
-            <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Recurring</label>
+          <label className="hol-recur">
+            <input
+              type="checkbox"
+              checked={form.recurring}
+              onChange={e => setForm({ ...form, recurring: e.target.checked })}
+            />
+            <span className="hol-recur-box" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+            </span>
+            Recurring annually
+          </label>
+          <div className="hol-addbar-actions">
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setShowForm(false); setForm(EMPTY_FORM) }}>Cancel</Button>
+            <Button type="button" variant="primary" size="sm" loading={saving} disabled={!form.name.trim() || !form.date} onClick={() => handleCreate()}>Add</Button>
           </div>
-          <button type="submit" disabled={saving}>
-            {saving ? 'Saving...' : 'Add'}
-          </button>
-        </form>
+        </div>
       )}
 
-      {filtered.length === 0 ? (
-        <p style={{ color: 'var(--text-muted)' }}>
-          No holidays found for this filter. Use "+ Add Holiday" to add holidays manually.
-        </p>
-      ) : (
-        Array.from(grouped.entries()).map(([country, items]) => (
-          <div key={country} style={{ marginBottom: '2rem' }}>
-            <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem', color: 'var(--brand-green)' }}>{COUNTRY_LABELS[country] || country} ({country})</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Day</th>
-                  <th>Name</th>
-                  <th>Recurring</th>
-                  {isPmoAdmin && <th></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {items.map(h => {
-                  const d = new Date(h.date + 'T00:00:00')
-                  const dayOfWeek = d.toLocaleDateString('en-US', { weekday: 'short' })
-                  const isWeekend = d.getDay() === 0 || d.getDay() === 6
-                  return (
-                    <tr key={h.id}>
-                      <td>{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                      <td style={{ color: isWeekend ? 'var(--color-high)' : 'var(--text-secondary)' }}>
-                        {dayOfWeek}{isWeekend ? ' (weekend)' : ''}
-                      </td>
-                      <td style={{ fontWeight: 500 }}>{h.name}</td>
-                      <td>{h.recurring ? 'Yes' : '—'}</td>
-                      {isPmoAdmin && (
-                        <td>
-                          <button onClick={() => deleteHoliday(h.id)} style={deleteBtnStyle}>Delete</button>
-                        </td>
-                      )}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+      <div className="hol-wrap">
+        {filtered.length === 0 ? (
+          <div className="hol-empty">
+            No holidays found for this filter.{isPmoAdmin ? ' Use "+ Add Holiday" to add holidays manually.' : ''}
           </div>
-        ))
-      )}
+        ) : (
+          <table className="hol-table">
+            <colgroup>
+              <col className="hol-c-date" />
+              <col className="hol-c-day" />
+              <col className="hol-c-name" />
+              <col className="hol-c-type" />
+              {isPmoAdmin && <col className="hol-c-act" />}
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Day</th>
+                <th>Holiday</th>
+                <th>Type</th>
+                {isPmoAdmin && <th aria-label="Actions" />}
+              </tr>
+            </thead>
+            <tbody>
+              {orderedCountries.map(country => (
+                <SectionRows
+                  key={country}
+                  country={country}
+                  items={grouped.get(country) || []}
+                  span={isPmoAdmin ? 5 : 4}
+                  isPmoAdmin={isPmoAdmin}
+                  onDelete={deleteHoliday}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <Dialog
+        open={showInfo}
+        onOpenChange={setShowInfo}
+        title="How Holidays Work"
+        ariaLabel="How holidays work"
+        width={560}
+        footer={<><span /><Button variant="secondary" size="sm" onClick={() => setShowInfo(false)}>Close</Button></>}
+      >
+        <div className="hol-infobody">
+          <p>
+            <strong>Data Source:</strong> Holidays are loaded into Supabase — edit the list via the Holidays page.
+            Future years are synced automatically via a GitHub Actions workflow (runs yearly on Jan 2) using the{' '}
+            <span className="hol-mono">Nager.Date</span> public API for most countries.
+          </p>
+          <p>
+            <strong>Countries Covered:</strong> United States, Brazil, Canada, Spain, Ireland, New Zealand,
+            Singapore, and UAE (Dubai).
+          </p>
+          <p>
+            <strong>Resourcing Impact:</strong> Each consultant&apos;s country (pulled from your HR system) is matched
+            against this holiday calendar. When a holiday falls on a weekday, that day is subtracted from the
+            consultant&apos;s available hours in the Resourcing view — e.g. a US consultant gets 32 available hours in
+            a week with one holiday.
+          </p>
+          <p>
+            <strong>Manual Adjustments:</strong> Use &quot;+ Add Holiday&quot; to add holidays that aren&apos;t covered
+            by the automatic sync (e.g. UAE Islamic holidays which shift yearly, or company-specific days off). Use
+            Delete to remove incorrect entries.
+          </p>
+          <p className="hol-info-foot">
+            Sync script: <span className="hol-mono">scripts/sync-holidays.ts</span> · Workflow:{' '}
+            <span className="hol-mono">.github/workflows/sync-holidays.yml</span> · Migration:{' '}
+            <span className="hol-mono">supabase/migration_v16_2026_holidays.sql</span>
+          </p>
+        </div>
+      </Dialog>
     </div>
   )
 }
 
-
-const filterStyle: React.CSSProperties = {
-  padding: '0.35rem 0.6rem',
-  background: 'var(--bg-card)',
-  border: '1px solid var(--border-subtle)',
-  borderRadius: 4,
-  color: 'var(--text-primary)',
-  fontSize: '0.8rem',
+interface SectionRowsProps {
+  country: string
+  items: Holiday[]
+  span: number
+  isPmoAdmin: boolean
+  onDelete: (id: string) => void
 }
 
-const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: '0.75rem', fontWeight: 600,
-  color: 'var(--text-muted)', marginBottom: '0.25rem',
-  textTransform: 'uppercase', letterSpacing: '0.05em',
+function SectionRows({ country, items, span, isPmoAdmin, onDelete }: SectionRowsProps) {
+  return (
+    <>
+      <tr className="hol-sect">
+        <td colSpan={span}>
+          <div className="hol-sect-h">
+            <span className="hol-flag" aria-hidden="true">{COUNTRY_FLAGS[country] || ''}</span>
+            <span className="hol-sect-nm">{COUNTRY_LABELS[country] || country}</span>
+            <span className="hol-sect-code">{country}</span>
+            <span className="hol-sect-cnt">{items.length}</span>
+          </div>
+        </td>
+      </tr>
+      {items.map((h, i) => {
+        const d = new Date(h.date + 'T00:00:00')
+        const dayOfWeek = d.toLocaleDateString('en-US', { weekday: 'short' })
+        const isWeekend = d.getDay() === 0 || d.getDay() === 6
+        return (
+          <tr key={h.id} className={i % 2 ? 'hol-zebra' : undefined}>
+            <td className="hol-date">{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+            <td className={`hol-day${isWeekend ? ' hol-wknd' : ''}`}>
+              {dayOfWeek}{isWeekend ? <span className="hol-wknd-tag"> ·wknd</span> : ''}
+            </td>
+            <td className="hol-name" title={h.name}>{h.name}</td>
+            <td>
+              <span className={`hol-badge${h.recurring ? ' hol-badge-ann' : ' hol-badge-one'}`}>
+                {h.recurring ? '↻ Annual' : 'One-off'}
+              </span>
+            </td>
+            {isPmoAdmin && (
+              <td className="hol-act">
+                <Button variant="ghost" size="sm" className="hol-del" title="Delete holiday" onClick={() => onDelete(h.id)}>
+                  Delete
+                </Button>
+              </td>
+            )}
+          </tr>
+        )
+      })}
+    </>
+  )
 }
-
-const inputStyle: React.CSSProperties = {
-  padding: '0.5rem 0.75rem', background: 'var(--bg-input)',
-  border: '1px solid var(--border-subtle)', borderRadius: 4,
-  color: 'var(--text-secondary)', fontSize: '0.875rem',
-}
-
-const deleteBtnStyle: React.CSSProperties = {
-  background: 'transparent', border: '1px solid var(--fill-critical)',
-  color: 'var(--color-critical)', padding: '0.2rem 0.5rem', fontSize: '0.7rem',
-}
-

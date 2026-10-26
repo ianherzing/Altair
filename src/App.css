@@ -1,6 +1,12 @@
 .app {
   display: flex;
-  min-height: 100vh;
+  /* Viewport-tall shell so `.content` (overflow-y: auto) is the application
+     scrollport — sticky Finances chrome, and existing sticky rails/theads
+     inside `.content`, pin against it. Without height + overflow:hidden the
+     flex child grows with the page and the *window* scrolls instead. */
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-content);
 }
 
 .sidebar {
@@ -12,40 +18,67 @@
   gap: 0.2rem;
   flex-shrink: 0;
   border-right: 1px solid var(--border-subtle);
+  /* The sidebar is OUT of flow (position:fixed below) so its width tween
+     never interpolates .content. ADR-0097: `.content` snaps margin-left to
+     the rail's rest-state width (230 expanded, 56 collapsed) so collapse
+     recenters the page. One layout per toggle, not one per tween frame. */
   transition: width 200ms ease;
+  /* No `will-change: width` — `width` is not a GPU-compositable property, so
+     the hint can't accelerate the tween. Worse, it forces a dedicated
+     compositing layer for the sidebar that gets re-rasterized and
+     overlap-tested every animation frame, which showed up in a Resourcing-page
+     trace as ~60ms of per-toggle Layerize churn (layers created/deleted each
+     frame). Dropping it removes that waste with zero visual change. */
   overflow: hidden;
-  position: relative;
-  z-index: 1;
+  /* Out of flow: the width tween animates only this fixed element, never the
+     page layout. z-index keeps the rail above `.content`. Modals / popovers
+     portal above this. */
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
 }
 
 .sidebar-collapsed {
   width: 56px;
   padding: 1.5rem 0.5rem;
   align-items: center;
+  /* ADR-0098: flyouts hang off the rail; clip only while the width tween runs. */
+  overflow: visible;
+}
+
+.sidebar.sidebar-collapsed {
+  overflow: visible;
 }
 
 .sidebar .logo-container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
-  margin-bottom: 2rem;
-  padding: 0.5rem;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+  padding: 0.85rem 0.5rem 0.6rem;
+}
+
+.sidebar-collapsed .logo-container {
+  gap: 0.4rem;
+  padding: 0.4rem 0;
 }
 
 .sidebar .logo-container img {
-  height: 36px;
+  height: 26px;
   width: auto;
   max-width: 100%;
   object-fit: contain;
 }
 
 .sidebar .logo-container .app-name {
-  font-size: 1.1rem;
-  font-weight: 300;
-  color: var(--brand-green);
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 
 .sidebar-collapsed .logo-container .app-name {
@@ -86,24 +119,31 @@
 }
 
 .sidebar a.active {
-  background: rgba(17, 195, 219, 0.1);
-  color: var(--brand-green);
+  background: var(--bg-card-alt);
+  color: var(--text-primary);
   font-weight: 600;
-  border-left: 3px solid var(--brand-green);
 }
 
 .sidebar-collapsed a.active {
-  border-left: none;
-  border-bottom: 2px solid var(--brand-green);
+  position: relative;
+  background: transparent;
+  color: var(--text-primary);
 }
 
-.sidebar .nav-icon {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
+.sidebar-collapsed a.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--brand-green);
+  border-radius: 1px;
 }
 
-/* Nav group styles */
+/* Accordion groups (ADR-0098). Header carries the icon; children are
+   indented text rows. The header is a div role="button" to stay clear of the
+   no-raw-<button> design rule. */
 .nav-group {
   display: flex;
   flex-direction: column;
@@ -112,20 +152,16 @@
 .nav-group-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  background: transparent;
-  border: none;
+  gap: 0.5rem;
   color: var(--text-muted);
   padding: 0.6rem 0.75rem;
   border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 0.875rem;
+  font-weight: 500;
   cursor: pointer;
   transition: background 150ms, color 150ms;
   white-space: nowrap;
-  font-family: inherit;
+  user-select: none;
 }
 
 .nav-group-header:hover {
@@ -133,100 +169,329 @@
   color: var(--text-primary);
 }
 
+.nav-group-header:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+
 .nav-group-active {
-  color: var(--brand-green);
+  color: var(--text-primary);
+}
+
+.nav-group-label {
+  flex: 1;
 }
 
 .nav-group-caret {
-  font-size: 0.45rem;
-  opacity: 0.6;
+  display: inline-flex;
+  color: var(--text-muted);
+  transition: transform 180ms ease;
 }
 
+.nav-group-open .nav-group-caret {
+  transform: rotate(90deg);
+}
+
+/* Smooth height accordion with no JS measurement (grid-rows 0fr -> 1fr). */
 .nav-group-children {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms ease;
+}
+
+.nav-group-open .nav-group-children {
+  grid-template-rows: 1fr;
+}
+
+.nav-group-children-inner {
+  overflow: hidden;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  gap: 0.1rem;
 }
 
+/* Child rows: text-only, indented past the group icon. Shortcut on the right. */
 .nav-group-children a {
-  padding-left: 1.25rem !important;
-  font-size: 0.825rem !important;
+  padding-left: 2.3rem;
+  font-size: 0.825rem;
+  justify-content: space-between;
 }
 
-.sidebar-toggle {
-  margin-top: 0.5rem;
-  background: transparent;
-  border: 1px solid var(--border-subtle);
+.nav-shortcut {
+  margin-left: auto;
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.nav-kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  min-width: var(--space-4);
+  text-align: center;
+  line-height: var(--leading-snug);
+}
+
+.nav-group-split {
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+}
+
+/* Collapsed rail: one icon per group, flyout of children (ADR-0098). */
+.nav-rail-group {
+  position: relative;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.nav-group-rail {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-muted);
-  padding: 0.4rem;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 0.7rem;
-  transition: color 150ms, background 150ms;
+  position: relative;
 }
 
-.sidebar-toggle:hover {
+.nav-group-rail:hover,
+.nav-rail-group.is-open .nav-group-rail {
   background: var(--bg-card);
   color: var(--text-primary);
+}
+
+.nav-rail-group.is-active .nav-group-rail {
+  color: var(--text-primary);
+}
+
+.nav-rail-group.is-active .nav-group-rail::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--brand-green);
+  border-radius: 1px;
+}
+
+.nav-flyout {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  margin-left: var(--space-2);
+  width: 248px; /* ds-allow: flyout menu width, not spacing scale */
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55); /* ds-allow: flyout elevation, no shadow token */
+  padding: var(--space-2);
+  z-index: 6;
+}
+
+/* Hover bridge across the visual gap so the flyout does not close while
+   the pointer travels from the icon to the card. */
+.nav-flyout::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 0;
+  bottom: 0;
+  width: var(--space-2);
+}
+
+.nav-rail-group:last-child .nav-flyout {
+  top: auto;
+  bottom: 0;
+}
+
+.nav-flyout-h {
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0.45rem 0.65rem;
+}
+
+.nav-flyout a {
+  justify-content: space-between;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.nav-flyout a.active {
+  background: var(--bg-card-alt);
+  color: var(--text-primary);
+}
+
+.nav-flyout a.active::before {
+  display: none;
+}
+
+.sidebar .nav-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Flat sidebar: scrollable nav region + static section headers
+   (replaces the old collapsible accordions). */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar-collapsed .sidebar-nav {
+  align-items: center;
+  /* Flyouts hang to the right of the rail. overflow-y:auto on .sidebar-nav
+     clipped them and drew a scrollbar in the 56px column. */
+  overflow: visible;
+}
+
+.sidebar-section {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0.8rem 0.75rem 0.3rem;
+  user-select: none;
+}
+
+/* Collapse toggle + sign-out reuse the <Button> primitive; these tune the
+   ghost variant for the sidebar context. */
+.sidebar .sidebar-toggle {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.sidebar-collapsed .sidebar-toggle {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .content {
   flex: 1;
+  /* min-width:0 lets this flex item shrink below its content's intrinsic
+     width. Without it (default min-width:auto) a wide child — e.g. the
+     Projects table — forces .content wider than the viewport and gets clipped
+     by body overflow-x:hidden with no scrollbar; with it, an inner
+     overflow-x:auto wrapper can constrain the table and show a scrollbar. */
+  min-width: 0;
+  /* min-height:0 is the height twin: a flex item's default min-height:auto
+     refuses to shrink below content, so overflow-y:auto never becomes a
+     scrollport. Sticky positioning inside `.content` needs that scrollport. */
+  min-height: 0;
   padding: 2rem;
-  background: var(--bg-content);
   overflow-y: auto;
   position: relative;
   z-index: 1;
+  /* ADR-0097: rest-state width matches the expanded rail. Collapsed, the
+     `.app-sidebar-collapsed` rule snaps this to 56px. No transition — a
+     tween here would relayout FinGrid every frame. */
+  margin-left: 230px; /* ds-allow: mirrors .sidebar width (layout reserve, not spacing scale) */
 }
 
-/* Sidebar user info */
-.sidebar-user {
-  padding: 0.5rem 0.75rem;
+.app-sidebar-collapsed .content {
+  margin-left: 56px; /* ds-allow: mirrors .sidebar-collapsed width */
+}
+
+/* Account row (avatar + identity + sign-out) */
+.sidebar-account {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.4rem 0.25rem;
   border-top: 1px solid var(--border-subtle);
-  margin-top: 0.5rem;
+  margin-top: 0.4rem;
 }
 
-.sidebar-user-email {
-  font-size: 0.7rem;
-  color: var(--text-muted);
+.sidebar-collapsed .sidebar-account {
+  align-items: center;
+}
+
+.sidebar-account-id {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+/* Account identity row. */
+.sidebar-account-id--link {
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-2));
+  padding: var(--space-1) var(--space-2);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.sidebar-account-id--link:hover { background: var(--bg-tertiary); }
+
+.sidebar-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-soft);
+}
+
+.sidebar-account-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.sidebar-account-email {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-bottom: 0.35rem;
 }
 
-.sidebar-signout {
-  background: transparent;
-  border: 1px solid var(--border-subtle);
+.sidebar-account-role {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
   color: var(--text-muted);
-  padding: 0.3rem 0.5rem;
-  font-size: 0.7rem;
-  border-radius: 4px;
-  cursor: pointer;
+}
+
+.sidebar .sidebar-signout {
   width: 100%;
-  transition: color 150ms, background 150ms;
-  font-family: inherit;
-}
-
-.sidebar-signout:hover {
-  background: var(--bg-card);
-  color: var(--text-primary);
-}
-
-.sidebar-signout-icon {
-  background: transparent;
-  border: 1px solid var(--border-subtle);
+  justify-content: flex-start;
+  gap: 0.5rem;
   color: var(--text-muted);
-  padding: 0.3rem;
-  font-size: 0.8rem;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: color 150ms, background 150ms;
-  margin-bottom: 0.25rem;
 }
 
-.sidebar-signout-icon:hover {
-  background: var(--bg-card);
-  color: var(--text-primary);
+.sidebar-collapsed .sidebar-signout {
+  width: auto;
+  justify-content: center;
 }
 
 /* Login page */
@@ -236,16 +501,61 @@
   align-items: center;
   justify-content: center;
   background: var(--bg-content);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ambient glow orbs — pure CSS. Scoped to the Login surface only; the
+   authenticated .app shell keeps a flat/clean background. position:fixed
+   clips at the viewport so Login itself does not need overflow:hidden
+   (that would clip the orbs' blur). The authenticated `.app` shell *does*
+   use overflow:hidden so `.content` is the sticky scrollport. z-index 0
+   keeps the orbs behind page chrome (.login-card runs at z-index 1). */
+.login-page::before,
+.login-page::after {
+  content: '';
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(60px);
+  z-index: 0;
+}
+
+.login-page::before {
+  width: 620px;
+  height: 620px;
+  top: -220px;
+  right: -180px;
+  background: radial-gradient(circle at center, rgba(214, 178, 94, 0.22) 0%, rgba(214, 178, 94, 0) 70%);
+}
+
+.login-page::after {
+  width: 560px;
+  height: 560px;
+  bottom: -200px;
+  left: -160px;
+  background: radial-gradient(circle at center, rgba(182, 85, 64, 0.16) 0%, rgba(182, 85, 64, 0) 70%);
+}
+
+/* The brief auth-loading screen reuses .login-page for the centered wordmark +
+   pulse bar, but should stay flat — suppress the ambient orbs there only. The
+   real Login page keeps them. */
+.login-page--plain::before,
+.login-page--plain::after {
+  content: none;
 }
 
 .login-card {
+  position: relative;
+  z-index: 1;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 2.5rem;
-  width: 380px;
+  border-radius: 16px;
+  padding: 3.25rem 2.75rem;
+  width: 420px;
   max-width: 90vw;
   text-align: center;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.55);
 }
 
 .login-logo {
@@ -253,25 +563,137 @@
   width: auto;
   max-width: 280px;
   object-fit: contain;
-  margin-bottom: 1rem;
+  margin-bottom: 1.75rem;
   display: block;
   margin-left: auto;
   margin-right: auto;
 }
 
 .login-title {
-  font-size: 1.5rem;
-  font-weight: 300;
-  color: var(--brand-green);
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  margin: 0 0 0.25rem 0;
+  font-family: var(--font-display);
+  font-size: 1.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem 0;
 }
 
 .login-subtitle {
   font-size: 0.85rem;
   color: var(--text-muted);
   margin: 0 0 2rem 0;
+}
+
+/* Card-less centered sign-in column (Vercel/Geist minimal). The .login-card
+   above is retained for the brief auth-loading spinner state. */
+.login-inner {
+  position: relative;
+  z-index: 1;
+  width: 320px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Okta CTA — uses the <Button> primitive (secondary variant); this tunes it to
+   full width within the sign-in column. */
+.login-page .login-button {
+  width: 100%;
+  justify-content: center;
+  margin-top: 0.25rem;
+}
+
+.login-foot {
+  margin-top: 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.login-error {
+  color: var(--brand-red);
+  font-size: 0.8rem;
+  margin-top: 1rem;
+}
+
+/* Auth-loading pulse bar — a thin indeterminate cyan sweep under the static
+   "Altair" wordmark (Vercel-style: no spinner). The track is a soft hairline;
+   a 40%-wide cyan segment sweeps across it. */
+.login-pulse-bar {
+  position: relative;
+  width: 120px;
+  height: 3px;
+  margin-top: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--border-soft);
+  overflow: hidden;
+}
+.login-pulse-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, transparent, var(--brand-green), transparent);
+  animation: login-pulse-sweep 1.3s var(--ease-out) infinite;
+}
+
+@keyframes login-pulse-sweep {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-pulse-bar::after { animation: none; left: 30%; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ───────── sonner Toaster — Altair brand alignment ─────────
+   sonner's `richColors` opt-in exposes per-type CSS variables on
+   [data-sonner-toast] nodes. We override the success/error palette
+   to use Altair gold/rust — emerald --color-success is the
+   severity ramp (reserved for Badge per design spec §1).
+   Backgrounds are solid --bg-card so the toast reads as a card with
+   a colored accent, not a translucent veil over the page.
+   ───────────────────────────────────────────────────────────────── */
+[data-sonner-toast][data-type='success'] {
+  --normal-bg: var(--bg-card);
+  --normal-border: var(--brand-green);
+  --normal-text: var(--text-primary);
+  --success-bg: var(--bg-card);
+  --success-border: var(--brand-green);
+  --success-text: var(--text-primary);
+}
+[data-sonner-toast][data-type='error'] {
+  --normal-bg: var(--bg-card);
+  --normal-border: var(--brand-red);
+  --normal-text: var(--text-primary);
+  --error-bg: var(--bg-card);
+  --error-border: var(--brand-red);
+  --error-text: var(--text-primary);
+}
+/* Destructive-confirmation variant — used by Delete (the operation
+   succeeded, but the message is about a destructive action, so the
+   visual language should signal "removed" rather than "created").
+   Save fires plain toast.success → cyan accent (above);
+   Delete fires toast.success(..., { className: 'toast-destructive' })
+   → red accent (here). */
+[data-sonner-toast].toast-destructive {
+  --normal-bg: var(--bg-card);
+  --normal-border: var(--brand-red);
+  --normal-text: var(--text-primary);
+  --success-bg: var(--bg-card);
+  --success-border: var(--brand-red);
+  --success-text: var(--text-primary);
+}
+[data-sonner-toast].toast-destructive [data-icon] {
+  color: var(--brand-red);
 }
 
 .login-input {
@@ -287,56 +709,8 @@
   box-sizing: border-box;
   transition: border-color 150ms;
 }
-
-.login-input::placeholder {
-  color: var(--text-muted);
-}
-
+.login-input::placeholder { color: var(--text-muted); }
 .login-input:focus {
   outline: none;
   border-color: var(--brand-green);
-}
-
-.login-button {
-  width: 100%;
-  padding: 0.7rem 1rem;
-  margin-top: 0.6rem;
-  background: var(--brand-green-dark);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 150ms;
-  font-family: inherit;
-}
-
-.login-button:hover {
-  opacity: 0.9;
-}
-
-.login-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.login-error {
-  color: #ef4444;
-  font-size: 0.8rem;
-  margin-top: 1rem;
-}
-
-.login-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--border);
-  border-top-color: var(--brand-green);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin: 0 auto;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }

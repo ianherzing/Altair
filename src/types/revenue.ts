@@ -1,10 +1,10 @@
 import type { RevenueStatus } from './database'
 
 export const CAT_COLORS = {
-  to_do: '#8B8FA3',              // gray — pre-scheduling
-  soft_unconfirmed: '#28A36A',   // green — matches StatusBadge
-  soft_at_risk: '#F0642B',       // orange — matches StatusBadge
-  hard: '#E63948',               // red — matches StatusBadge hard_scheduled
+  to_do: '#E8DBC0',
+  soft_unconfirmed: '#006C35',
+  soft_at_risk: '#C9654F',
+  hard: '#B65540',
 } as const
 
 export const CAT_LABELS = {

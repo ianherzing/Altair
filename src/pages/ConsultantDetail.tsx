@@ -3,11 +3,15 @@ import { useParams, Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useLoadData } from '../lib/useLoadData'
 import { LoadingState } from '../components/LoadingState'
+import { PageTitle, Button, DatePicker } from '../components/ui'
+import { SearchableSelect } from '../components/SearchableSelect'
 import { useIsPmoAdmin, useIsReadOnly } from '../lib/permissions'
 import { useCurrentConsultant } from '../lib/useCurrentConsultant'
 import { HOURS_PER_DAY, getWorkingDaysInMonth, getHolidaysInMonth, distributeHoursToMonth, formatMonth } from '../lib/dateUtils'
 import type { Consultant, Skill, ConsultantSkill, PassionArea, ConsultantCostRate, ProjectType, Holiday } from '../types/database'
 import { EngagementHistoryModal } from '../components/EngagementHistoryModal'
+import { ConsultantDetailSkeleton } from './ConsultantDetailSkeleton'
+import './ConsultantDetail.css'
 
 const COUNTRY_LABELS: Record<string, string> = {
   US: 'United States',
@@ -21,16 +25,28 @@ const COUNTRY_LABELS: Record<string, string> = {
   UK: 'United Kingdom',
 }
 
-const RATING_COLORS: Record<number, string> = {
-  1: '#7CB342',
-  2: '#FFA726',
-  3: '#11C3DB',
-}
+/* ds-allow: semantic skill-rating ramp — no token */
+const RATING_COLORS: Record<number, string> = { 1: '#2BFF00', 2: '#FFF500', 3: '#00F5FF' }
 
 const RATING_LABELS: Record<number, string> = {
   1: 'Learning',
   2: 'Proficient',
   3: 'Expert',
+}
+
+function projectTypeColor(type: string): string {
+  if (type === 'pto') return 'var(--bar-pto)'
+  if (type === 'non_billable') return 'var(--bar-nonbill)'
+  return 'var(--brand-cyan)'
+}
+function projectTypeLabel(type: string): string {
+  if (type === 'pto') return 'PTO'
+  if (type === 'non_billable') return 'Non-Billable'
+  return 'Billable'
+}
+
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 export function ConsultantDetail() {
@@ -88,7 +104,6 @@ export function ConsultantDetail() {
     setConsultantSkills(allConsultantSkills.filter((es: ConsultantSkill) => es.consultant_id === engId))
     setPassionAreas(allPassionAreas.filter((pa: PassionArea) => pa.is_active))
     setCostRates(crData)
-    // Join assignments with projects client-side
     const projectMap = new Map(projects.map(p => [p.id, p]))
     setProjectHistory(assignments.map(a => ({
       id: a.id,
@@ -137,19 +152,17 @@ export function ConsultantDetail() {
   }
 
   const isTerminated = consultant?.offboarded_at != null
-  // Parse as local date to avoid UTC timezone shift (e.g. Feb 27 UTC → Feb 26 CST)
   const offboardDateStr = isTerminated ? consultant!.offboarded_at!.slice(0, 10) : null
   const offboardDate = offboardDateStr ? new Date(offboardDateStr + 'T00:00:00') : null
   const dropOffDate = offboardDate ? new Date(offboardDate.getTime() + 14 * 86400000) : null
   const isInGracePeriod = isTerminated && dropOffDate && dropOffDate > new Date()
 
-  // YTD utilization computation
   const utilization = useMemo(() => {
     if (!consultant) return null
     const now = new Date()
     const year = parseInt(utilYear)
     const currentYear = now.getFullYear()
-    const currentMonth = now.getMonth() // 0-based
+    const currentMonth = now.getMonth()
 
     const months: Array<{
       key: string
@@ -214,12 +227,13 @@ export function ConsultantDetail() {
     return { months, ytdPct, ytdBillable, ytdAvailable, target: consultant.utilization_target }
   }, [consultant, holidays, projectHistory, utilYear])
 
-  if (loading || error) return <LoadingState loading={loading} error={error} retry={retry} message="Loading consultant..." />
+  if (loading) return <ConsultantDetailSkeleton />
+  if (error) return <LoadingState loading={false} error={error} retry={retry} message="Loading consultant..." />
   if (!consultant) return <p>Consultant not found.</p>
 
   const skillMap = new Map(skills.map(s => [s.id, s.name]))
   const passionName = consultant.passion_area_id
-    ? passionAreas.find(pa => pa.id === consultant.passion_area_id)?.name || '—'
+    ? passionAreas.find(pa => pa.id === consultant.passion_area_id)?.name || consultant.passion_area || '—'
     : '—'
 
   const engSkills = consultantSkills
@@ -227,913 +241,566 @@ export function ConsultantDetail() {
     .filter(s => s.name)
     .sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name))
 
-  return (
-    <div>
-      <Link to="/consultants" style={{ color: 'var(--brand-green)', textDecoration: 'none', fontSize: '0.8rem' }}>
-        &larr; Back to Consultants
-      </Link>
+  const isOwnProfile = currentConsultant?.id === consultant.id
+  const canEditMentor = canWrite || isOwnProfile
+  const mentorOpts = [
+    { value: '', label: 'Unassigned' },
+    ...mentorOptions.filter(m => m.id !== consultant.id).map(m => ({ value: m.full_name, label: m.full_name })),
+  ]
+  if (consultant.mentor && !mentorOptions.some(m => m.full_name === consultant.mentor)) {
+    mentorOpts.push({ value: consultant.mentor, label: consultant.mentor })
+  }
+  const countryOpts = [
+    { value: '', label: 'Not set' },
+    ...Object.entries(COUNTRY_LABELS).map(([code, label]) => ({ value: code, label })),
+  ]
+  const yearOpts = Array.from({ length: new Date().getFullYear() - 2025 }, (_, i) => String(new Date().getFullYear() - i)).map(y => ({ value: y, label: y }))
+  const historyYearOpts = [{ value: 'all', label: 'All Years' }, ...yearOpts]
 
-      <div style={{ marginTop: '1rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '1rem' }}>
-        <div>
-          <h2 style={{ margin: 0 }}>{consultant.full_name}</h2>
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{consultant.title || 'No title'}</span>
-        </div>
-        <button
-          onClick={() => setShowHistory(true)}
-          style={{
-            background: 'transparent',
-            border: '1px solid var(--brand-green)',
-            color: 'var(--brand-green)',
-            padding: '0.4rem 0.85rem',
-            fontSize: '0.8rem',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
-        >
-          View 90-day History
-        </button>
+  const histMatch = (a: typeof projectHistory[number]) => {
+    if (historyYear === 'all') return true
+    const y = parseInt(historyYear)
+    return a.start_date.startsWith(historyYear) || a.end_date.startsWith(historyYear) ||
+      (new Date(a.start_date + 'T00:00:00').getFullYear() <= y && new Date(a.end_date + 'T00:00:00').getFullYear() >= y)
+  }
+  const visibleHistory = projectHistory.filter(a => a.projects && a.projects.project_type !== 'pto').filter(histMatch)
+
+  const fmtLongDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  const utilYearLabel = utilYear === String(new Date().getFullYear()) ? 'YTD' : utilYear
+
+  return (
+    <div className="ed">
+      <Link to="/consultants" className="ed-back">&larr; Back to Consultants</Link>
+
+      <div className="ed-head">
+        <PageTitle title={consultant.full_name} style={{ margin: 0 }} />
+        {isTerminated ? (
+          <span className="ed-badge ed-badge--term"><span className="ed-dot" />Terminated</span>
+        ) : (
+          <span className="ed-badge"><span className="ed-dot" />Active</span>
+        )}
+        <span className="ed-subtitle">{consultant.title || 'No title'}</span>
+        <span className="ed-headspacer" />
+        <Button variant="ghost" size="sm" onClick={() => setShowHistory(true)}>
+          90-day History
+        </Button>
+        {!isTerminated && isPmoAdmin && !showTerminate && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ed-term-btn"
+            icon={
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 14V2.5M3 3h8l-1.5 3L11 9H3" />
+              </svg>
+            }
+            onClick={() => setShowTerminate(true)}
+          >
+            Terminate Consultant
+          </Button>
+        )}
       </div>
-      {showHistory && consultant && (
+
+      {showHistory && (
         <EngagementHistoryModal consultant={consultant} onClose={() => setShowHistory(false)} />
       )}
 
-      {/* Terminated banner */}
       {isTerminated && (
-        <div style={{
-          background: 'var(--bg-card)',
-          border: '1px solid #98242d',
-          borderRadius: 8,
-          padding: '1rem 1.25rem',
-          marginBottom: '1.5rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
+        <div className="ed-term-banner">
           <div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#ff6b6b' }}>
-              Terminated on {offboardDate!.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            <div className="ed-term-title">
+              Terminated on {fmtLongDate(offboardDate!)}
             </div>
-            {isInGracePeriod && dropOffDate && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                Drops from resourcing on {dropOffDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-              </div>
-            )}
-            {!isInGracePeriod && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                No longer visible in resourcing view
-              </div>
+            {isInGracePeriod && dropOffDate ? (
+              <div className="ed-term-sub">Drops from resourcing on {fmtLongDate(dropOffDate)}</div>
+            ) : (
+              <div className="ed-term-sub">No longer visible in resourcing view</div>
             )}
           </div>
-          <button
-            onClick={handleReinstate}
-            disabled={saving}
-            style={{
-              background: 'transparent',
-              border: '1px solid var(--border)',
-              color: 'var(--text-secondary)',
-              padding: '0.4rem 0.75rem',
-              fontSize: '0.8rem',
-              borderRadius: 4,
-              cursor: 'pointer',
-              opacity: saving ? 0.6 : 1,
-            }}
-          >
-            {saving ? 'Reinstating...' : 'Reinstate Consultant'}
-          </button>
+          <Button variant="ghost" size="sm" disabled={saving} onClick={handleReinstate}>
+            {saving ? 'Reinstating…' : 'Reinstate Consultant'}
+          </Button>
         </div>
       )}
 
-      {/* Terminate action (for active consultants) */}
-      {!isTerminated && isPmoAdmin && (
-        <div style={{ marginBottom: '1.5rem' }}>
-          {!showTerminate ? (
-            <button
-              onClick={() => setShowTerminate(true)}
-              style={{
-                background: 'transparent',
-                border: '1px solid #98242d',
-                color: '#ff6b6b',
-                padding: '0.4rem 0.75rem',
-                fontSize: '0.8rem',
-                borderRadius: 4,
-                cursor: 'pointer',
-              }}
-            >
-              Terminate Consultant
-            </button>
-          ) : (
-            <div style={{
-              background: 'var(--bg-card)',
-              border: '1px solid #98242d',
-              borderRadius: 8,
-              padding: '1rem 1.25rem',
-            }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
-                Set the termination date for {consultant.full_name}. They will remain visible in the resourcing view for 2 weeks after this date.
-              </div>
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                <div>
-                  <label style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', display: 'block', marginBottom: '0.25rem' }}>
-                    Termination Date
-                  </label>
-                  <input
-                    type="date"
-                    value={terminationDate}
-                    onChange={e => setTerminationDate(e.target.value)}
-                    style={{
-                      padding: '0.4rem 0.6rem',
-                      background: 'var(--bg-input)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 4,
-                      color: 'var(--text-primary)',
-                      fontSize: '0.85rem',
+      {!isTerminated && isPmoAdmin && showTerminate && (
+        <div className="ed-term-form">
+          <div className="ed-term-form-note">
+            Set the termination date for {consultant.full_name}. They will remain visible in the resourcing view for 2 weeks after this date.
+          </div>
+          <div className="ed-term-form-row">
+            <div className="ed-field">
+              <label className="ed-field-label">Termination date</label>
+              <DatePicker value={terminationDate} onChange={(v) => setTerminationDate(v)} ariaLabel="Termination date" />
+            </div>
+            <div className="ed-term-form-actions">
+              <Button variant="secondary" size="sm" onClick={() => setShowTerminate(false)}>Cancel</Button>
+              <Button variant="danger" size="sm" loading={saving} disabled={saving || !terminationDate} onClick={handleTerminate}>
+                {saving ? 'Terminating…' : 'Confirm Termination'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="ed-dossier">
+        <div className="ed-rail">
+          <div className="ed-panel">
+            <div className="ed-ph"><span className="ed-eyebrow">Profile</span></div>
+            <div className="ed-frow">
+              <span className="ed-k">Email</span>
+              <span className="ed-v ed-v--sans" title={consultant.email}>{consultant.email}</span>
+            </div>
+            <div className="ed-frow">
+              <span className="ed-k">Manager</span>
+              <span className={`ed-v ed-v--sans${consultant.manager ? '' : ' ed-v--muted'}`}>{consultant.manager || '—'}</span>
+            </div>
+            <div className="ed-frow">
+              <span className="ed-k">Passion Area</span>
+              {consultant.passion_area_id
+                ? <span className="ed-passion-pill">{passionName}</span>
+                : <span className="ed-v ed-v--sans ed-v--muted">—</span>}
+            </div>
+          </div>
+
+          <div className="ed-panel">
+            <div className="ed-editrow">
+              <span className="ed-k">Mentor</span>
+              {canEditMentor ? (
+                <div className="ed-edit-select">
+                  <SearchableSelect
+                    variant="ghost"
+                    value={consultant.mentor || ''}
+                    placeholder="Unassigned"
+                    options={mentorOpts}
+                    onChange={async (val) => {
+                      const newMentor = val || null
+                      const prev = consultant.mentor
+                      setConsultant({ ...consultant, mentor: newMentor })
+                      try {
+                        if (isOwnProfile && !canWrite) {
+                          await api.updateOwnMentor(newMentor)
+                        } else {
+                          await api.updateConsultant(consultant.id, { mentor: newMentor })
+                        }
+                      } catch (err: unknown) {
+                        alert('Error updating mentor: ' + errMessage(err))
+                        setConsultant({ ...consultant, mentor: prev })
+                      }
                     }}
                   />
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignSelf: 'flex-end' }}>
-                  <button
-                    onClick={() => setShowTerminate(false)}
+              ) : (
+                <span className={`ed-v ed-v--sans${consultant.mentor ? '' : ' ed-v--muted'}`}>{consultant.mentor || '—'}</span>
+              )}
+            </div>
+            <div className="ed-editrow">
+              <span className="ed-k">Country</span>
+              <div className="ed-edit-select">
+                <SearchableSelect
+                  variant="ghost"
+                  value={consultant.country || ''}
+                  placeholder="Not set"
+                  options={countryOpts}
+                  onChange={async (val) => {
+                    const newCountry = val || null
+                    setConsultant({ ...consultant, country: newCountry })
+                    try {
+                      await api.updateConsultantCountry(consultant.id, newCountry ?? '')
+                    } catch (err: unknown) {
+                      alert('Error updating country: ' + errMessage(err))
+                      if (id) loadData(id)
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <div className="ed-editrow">
+              <span className="ed-k">Util Target</span>
+              {canWrite ? (
+                <span className="ed-numfield">
+                  <input
+                    className="no-spinner"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={consultant.utilization_target}
+                    onChange={async (e) => {
+                      const val = parseInt(e.target.value)
+                      if (isNaN(val) || val < 0 || val > 100) return
+                      setConsultant({ ...consultant, utilization_target: val })
+                      try {
+                        await api.updateConsultantUtilizationTarget(consultant.id, val)
+                      } catch (err: unknown) {
+                        alert('Error updating target: ' + errMessage(err))
+                        if (id) loadData(id)
+                      }
+                    }}
+                  />
+                  <span className="ed-numfield-suffix">%</span>
+                </span>
+              ) : (
+                <span className="ed-v">{consultant.utilization_target}%</span>
+              )}
+            </div>
+          </div>
+
+          <div className="ed-panel">
+            <div className="ed-ph"><span className="ed-eyebrow">Skills · {engSkills.length}</span></div>
+            {engSkills.length === 0 ? (
+              <p className="ed-skills-empty">
+                No skills yet — manage on the <Link to="/skills" className="ed-plink">Skills Matrix</Link>.
+              </p>
+            ) : (
+              <div className="ed-skills">
+                {engSkills.map(s => (
+                  <span
+                    key={s.id}
+                    className="ed-skill"
                     style={{
-                      background: 'transparent',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text-secondary)',
-                      padding: '0.4rem 0.75rem',
-                      fontSize: '0.8rem',
-                      borderRadius: 4,
-                      cursor: 'pointer',
+                      background: `color-mix(in srgb, transparent 88%, ${RATING_COLORS[s.rating]})`,
+                      border: `1px solid color-mix(in srgb, transparent 80%, ${RATING_COLORS[s.rating]})`,
+                      color: RATING_COLORS[s.rating],
                     }}
                   >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleTerminate}
-                    disabled={saving || !terminationDate}
+                    {s.name}
+                    <span className="ed-skill-rl">{RATING_LABELS[s.rating]}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {utilization && (
+            <div className="ed-panel">
+              <div className="ed-ph">
+                <span className="ed-eyebrow">Utilization · {utilYearLabel}</span>
+                {utilization.target > 0 && (
+                  <span className={`ed-util-target${utilization.ytdPct >= utilization.target ? ' ok' : ' under'}`}>
+                    Target {utilization.target}% {utilization.ytdPct >= utilization.target ? '✓' : '✗'}
+                  </span>
+                )}
+              </div>
+              <div className="ed-ru-pct" style={{ color: utilColorFn(utilization.ytdPct) }}>{utilization.ytdPct}%</div>
+              <div className="ed-ru-meta">{utilization.ytdBillable}h / {utilization.ytdAvailable}h billable</div>
+              <div className="ed-ru-bar">
+                {utilization.months.map(m => (
+                  <div
+                    key={m.key}
+                    className="ed-ru-cell"
+                    title={`${m.label}: ${m.utilization}% (${m.billableHours}h / ${m.availableHours}h)`}
                     style={{
-                      background: '#98242d',
-                      border: 'none',
-                      color: '#fff',
-                      padding: '0.4rem 0.75rem',
-                      fontSize: '0.8rem',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                      opacity: saving ? 0.6 : 1,
+                      background: m.utilization > 0
+                        ? `color-mix(in srgb, transparent ${m.isFuture ? 80 : 62}%, ${utilColorFn(m.utilization)})`
+                        : 'var(--bg-input)',
                     }}
-                  >
-                    {saving ? 'Terminating...' : 'Confirm Termination'}
-                  </button>
-                </div>
+                  />
+                ))}
+              </div>
+              <div className="ed-ru-labels">
+                {utilization.months.map(m => (
+                  <span key={m.key} className={m.isFuture ? 'future' : undefined}>
+                    {new Date(m.key + '-01T00:00:00').toLocaleDateString('en-US', { month: 'narrow' })}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isPmoAdmin && (
+            <div className="ed-panel">
+              <div className="ed-ph"><span className="ed-eyebrow">Cost</span></div>
+              <div className="ed-frow">
+                <span className="ed-k">Current Rate</span>
+                <span className={`ed-v${consultant.hourly_cost_rate ? '' : ' ed-v--muted'}`}>
+                  {consultant.hourly_cost_rate ? `$${consultant.hourly_cost_rate}/hr` : 'Not set'}
+                </span>
               </div>
             </div>
           )}
         </div>
-      )}
 
-      {/* Info cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-        <InfoCard label="Email" value={consultant.email} />
-        <InfoCard label="Manager" value={consultant.manager || '—'} />
-        <div style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 8,
-          padding: '1rem 1.25rem',
-        }}>
-          <div style={{
-            fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)',
-            textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem',
-          }}>Mentor</div>
-          {(() => {
-            const isOwnProfile = currentConsultant?.id === consultant.id
-            const canEditMentor = canWrite || isOwnProfile
-            return canEditMentor ? (
-            <select
-              value={consultant.mentor || ''}
-              onChange={async (e) => {
-                const newMentor = e.target.value || null
-                const prev = consultant.mentor
-                setConsultant({ ...consultant, mentor: newMentor })
-                try {
-                  if (isOwnProfile && !canWrite) {
-                    await api.updateOwnMentor(newMentor)
-                  } else {
-                    await api.updateConsultant(consultant.id, { mentor: newMentor })
-                  }
-                } catch (err: unknown) {
-                  const message = err instanceof Error ? err.message : 'Unknown error'
-                  alert('Error updating mentor: ' + message)
-                  setConsultant({ ...consultant, mentor: prev })
-                }
-              }}
-              style={{
-                background: 'var(--bg-input)', border: '1px solid var(--border-subtle)',
-                borderRadius: 4, color: 'var(--text-primary)', fontSize: '0.95rem',
-                fontWeight: 600, padding: '0.2rem 0.4rem', width: '100%',
-              }}
-            >
-              <option value="">— None —</option>
-              {mentorOptions
-                .filter(m => m.id !== consultant.id)
-                .map(m => (
-                  <option key={m.id} value={m.full_name}>{m.full_name}</option>
-                ))}
-              {consultant.mentor && !mentorOptions.some(m => m.full_name === consultant.mentor) && (
-                <option value={consultant.mentor}>{consultant.mentor}</option>
-              )}
-            </select>
-          ) : (
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              {consultant.mentor || '—'}
-            </div>
-          )
-          })()}
-        </div>
-        <div style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 8,
-          padding: '1rem 1.25rem',
-        }}>
-          <div style={{
-            fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)',
-            textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem',
-          }}>Country</div>
-          <select
-            value={consultant.country || ''}
-            onChange={async (e) => {
-              const newCountry = e.target.value || null
-              setConsultant({ ...consultant, country: newCountry })
-              try {
-                await api.updateConsultantCountry(consultant.id, newCountry ?? '')
-              } catch (err: any) {
-                alert('Error updating country: ' + (err.message || err))
-                if (id) loadData(id)
-              }
-            }}
-            style={{
-              background: 'var(--bg-input)', border: '1px solid var(--border-subtle)',
-              borderRadius: 4, color: 'var(--text-primary)', fontSize: '0.95rem',
-              fontWeight: 600, padding: '0.2rem 0.4rem', width: '100%',
-            }}
-          >
-            <option value="">— Not set —</option>
-            {Object.entries(COUNTRY_LABELS).map(([code, label]) => (
-              <option key={code} value={code}>{label}</option>
-            ))}
-          </select>
-        </div>
-        <InfoCard label="Passion Area" value={passionName} />
-        <div style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 8,
-          padding: '1rem 1.25rem',
-        }}>
-          <div style={{
-            fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)',
-            textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem',
-          }}>Util Target</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-            {canWrite ? (
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={consultant.utilization_target}
-                onChange={async (e) => {
-                  const val = parseInt(e.target.value)
-                  if (isNaN(val) || val < 0 || val > 100) return
-                  setConsultant({ ...consultant, utilization_target: val })
-                  try {
-                    await api.updateConsultantUtilizationTarget(consultant.id, val)
-                  } catch (err: any) {
-                    alert('Error updating target: ' + (err.message || err))
-                    if (id) loadData(id)
-                  }
-                }}
-                style={{
-                  background: 'var(--bg-input)', border: '1px solid var(--border-subtle)',
-                  borderRadius: 4, color: 'var(--text-primary)', fontSize: '0.95rem',
-                  fontWeight: 600, padding: '0.2rem 0.4rem', width: '60px', textAlign: 'right',
-                }}
-              />
-            ) : (
-              <span style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                {consultant.utilization_target}
-              </span>
-            )}
-            <span style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>%</span>
-          </div>
-        </div>
-        {isPmoAdmin && (
-          <InfoCard
-            label="Current Cost Rate"
-            value={consultant.hourly_cost_rate ? `$${consultant.hourly_cost_rate}/hr` : 'Not set'}
-            muted={!consultant.hourly_cost_rate}
-          />
-        )}
-      </div>
-
-      {/* YTD Utilization */}
-      {utilization && (
-        <div style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 8,
-          padding: '1.5rem',
-          marginBottom: '1.5rem',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1rem' }}>
-              {utilYear === String(new Date().getFullYear()) ? 'YTD' : utilYear} Utilization:{' '}
-              <span style={{ color: utilColorFn(utilization.ytdPct), fontSize: '1.1rem' }}>
-                {utilization.ytdPct}%
-              </span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400, marginLeft: '0.5rem' }}>
-                ({Number(utilization.ytdBillable.toFixed(1))}h / {Number(utilization.ytdAvailable.toFixed(1))}h)
-              </span>
-              {utilization.target > 0 && (
-                <span style={{
-                  fontSize: '0.75rem', fontWeight: 400, marginLeft: '0.75rem',
-                  color: utilization.ytdPct >= utilization.target ? '#28A36A' : '#F0642B',
-                }}>
-                  Target: {utilization.target}% {utilization.ytdPct >= utilization.target ? '\u2713' : '\u2717'}
-                </span>
-              )}
-            </h3>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <select
-                value={utilYear}
-                onChange={e => setUtilYear(e.target.value)}
-                style={{
-                  background: 'var(--bg-input)', border: '1px solid var(--border-subtle)',
-                  borderRadius: 4, color: 'var(--text-primary)', fontSize: '0.8rem',
-                  padding: '0.3rem 0.5rem',
-                }}
-              >
-                {Array.from({ length: new Date().getFullYear() - 2025 }, (_, i) => String(new Date().getFullYear() - i)).map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-              <button
-                onClick={() => setUtilDrilldown(!utilDrilldown)}
-                style={{
-                  background: 'transparent', border: '1px solid var(--border-subtle)',
-                  color: 'var(--brand-green)', padding: '0.35rem 0.75rem',
-                  fontSize: '0.8rem', borderRadius: 4, cursor: 'pointer',
-                }}
-              >
-                {utilDrilldown ? 'Hide Details' : 'Show Details'}
-              </button>
-            </div>
-          </div>
-
-          {/* Mini heat map bar */}
-          <div style={{ display: 'flex', gap: '2px', marginBottom: utilDrilldown ? '1rem' : 0 }}>
-            {utilization.months.map(m => (
-              <div
-                key={m.key}
-                title={`${m.label}: ${m.utilization}% (${m.billableHours}h / ${m.availableHours}h)`}
-                style={{
-                  flex: 1, height: 28,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: m.utilization > 0
-                    ? `${utilColorFn(m.utilization)}${m.isFuture ? '20' : '35'}`
-                    : 'var(--bg-input)',
-                  borderRadius: 3,
-                  fontSize: '0.65rem', fontWeight: 600,
-                  color: m.utilization > 0 ? utilColorFn(m.utilization) : 'var(--text-muted)',
-                  borderLeft: m.isFuture && !utilization.months[utilization.months.indexOf(m) - 1]?.isFuture
-                    ? '2px dashed var(--border)' : undefined,
-                }}
-              >
-                {m.utilization > 0 ? `${m.utilization}%` : '\u2014'}
+        <div className="ed-main">
+          {utilization && (
+            <>
+              <div className="ed-sect">
+                <h3>Monthly Breakdown</h3>
+                <div className="ed-tools">
+                  <SearchableSelect
+                    variant="ghost"
+                    value={utilYear}
+                    options={yearOpts}
+                    onChange={setUtilYear}
+                  />
+                  <Button variant="ghost" size="sm" onClick={() => setUtilDrilldown(!utilDrilldown)}>
+                    {utilDrilldown ? 'Hide breakdown' : 'Show breakdown'}
+                  </Button>
+                </div>
               </div>
-            ))}
-          </div>
-
-          {/* Month labels under the bar */}
-          <div style={{ display: 'flex', gap: '2px' }}>
-            {utilization.months.map(m => (
-              <div key={m.key} style={{
-                flex: 1, textAlign: 'center',
-                fontSize: '0.55rem', color: m.isFuture ? 'var(--text-muted)' : 'var(--text-secondary)',
-                fontStyle: m.isFuture ? 'italic' : 'normal',
-                paddingTop: '0.15rem',
-              }}>
-                {new Date(m.key + '-01T00:00:00').toLocaleDateString('en-US', { month: 'short' })}
-              </div>
-            ))}
-          </div>
-
-          {/* Detailed breakdown table */}
-          {utilDrilldown && (
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Month</th>
-                  <th style={{ textAlign: 'right', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Available</th>
-                  <th style={{ textAlign: 'right', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Billable</th>
-                  <th style={{ textAlign: 'right', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Utilization</th>
-                </tr>
-              </thead>
-              <tbody>
-                {utilization.months.map(m => {
-                  const isExpanded = expandedMonth === m.key
-                  const hasAssignments = m.assignments.length > 0
-                  return (
-                    <React.Fragment key={m.key}>
-                      <tr
-                        onClick={() => hasAssignments && setExpandedMonth(isExpanded ? null : m.key)}
-                        style={{
-                          opacity: m.isFuture ? 0.6 : 1,
-                          cursor: hasAssignments ? 'pointer' : 'default',
-                          background: isExpanded ? 'rgba(17, 195, 219, 0.05)' : undefined,
-                        }}
-                        onMouseEnter={e => { if (hasAssignments) e.currentTarget.style.background = 'rgba(17, 195, 219, 0.05)' }}
-                        onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = '' }}
-                      >
-                        <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', borderBottom: '1px solid var(--border-subtle)', fontStyle: m.isFuture ? 'italic' : 'normal' }}>
-                          {hasAssignments && <span style={{ fontSize: '0.6rem', marginRight: '0.35rem', color: 'var(--text-muted)' }}>{isExpanded ? '\u25BC' : '\u25B6'}</span>}
-                          {m.label} {m.isFuture ? '(planned)' : ''}
-                        </td>
-                        <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', textAlign: 'right', borderBottom: '1px solid var(--border-subtle)' }}>
-                          {m.availableHours}h
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
-                            ({m.workingDays}d - {m.holidayDays}h)
-                          </span>
-                        </td>
-                        <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', textAlign: 'right', borderBottom: '1px solid var(--border-subtle)', color: 'var(--brand-green)' }}>
-                          {m.billableHours}h
-                        </td>
-                        <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', textAlign: 'right', fontWeight: 600, borderBottom: '1px solid var(--border-subtle)', color: utilColorFn(m.utilization) }}>
-                          {m.utilization}%
-                        </td>
+              {utilDrilldown && (
+                <div className="ed-tbl-wrap">
+                  <table className="ed-util-table">
+                    <thead>
+                      <tr>
+                        <th>Month</th>
+                        <th className="num">Available</th>
+                        <th className="num">Billable</th>
+                        <th className="num">Utilization</th>
                       </tr>
-                      {isExpanded && m.assignments.map((a, i) => {
-                        const typeColor = a.type === 'billable' ? '#00A86B' : a.type === 'pto' ? '#D6B25E' : '#0F9F8A'
-                        const typeLabel = a.type === 'billable' ? 'Billable' : a.type === 'pto' ? 'PTO' : 'Non-Billable'
+                    </thead>
+                    <tbody>
+                      {utilization.months.map(m => {
+                        const isExpanded = expandedMonth === m.key
+                        const hasAssignments = m.assignments.length > 0
                         return (
-                          <tr key={i} style={{ background: 'rgba(17, 195, 219, 0.03)' }}>
-                            <td colSpan={2} style={{ padding: '0.3rem 0.5rem 0.3rem 1.75rem', fontSize: '0.8rem', borderBottom: '1px solid var(--border-subtle)' }}>
-                              <Link to={`/projects/${a.projectId}`} style={{ color: 'var(--brand-green)', textDecoration: 'none' }}>
-                                {a.project}
-                              </Link>
-                              <span style={{ color: 'var(--text-muted)', marginLeft: '0.5rem', fontSize: '0.75rem' }}>{a.client}</span>
+                          <React.Fragment key={m.key}>
+                            <tr
+                              className={`ed-util-row${m.isFuture ? ' is-future' : ''}${hasAssignments ? ' is-clickable' : ''}${isExpanded ? ' is-expanded' : ''}`}
+                              onClick={() => hasAssignments && setExpandedMonth(isExpanded ? null : m.key)}
+                            >
+                              <td>
+                                {hasAssignments && <span className="ed-util-caret">{isExpanded ? '▼' : '▶'}</span>}
+                                {m.label}{m.isFuture ? ' (planned)' : ''}
+                              </td>
+                              <td className="num">
+                                {m.availableHours}h
+                                <span className="ed-util-sub">({m.workingDays}d − {m.holidayDays}h)</span>
+                              </td>
+                              <td className="num ed-util-bill">{m.billableHours}h</td>
+                              <td className="num ed-util-pct" style={{ color: utilColorFn(m.utilization) }}>{m.utilization}%</td>
+                            </tr>
+                            {isExpanded && m.assignments.map((a, i) => {
+                              const typeColor = projectTypeColor(a.type)
+                              return (
+                                <tr key={i} className="ed-util-asg">
+                                  <td colSpan={2}>
+                                    <Link to={`/projects/${a.projectId}`} className="ed-plink">{a.project}</Link>
+                                    <span className="ed-util-asg-client">{a.client}</span>
+                                  </td>
+                                  <td className="num" style={{ color: typeColor }}>
+                                    {a.hours}h
+                                    <span className="ed-util-asg-type">{projectTypeLabel(a.type)}</span>
+                                  </td>
+                                  <td />
+                                </tr>
+                              )
+                            })}
+                          </React.Fragment>
+                        )
+                      })}
+                      <tr className="ed-util-total">
+                        <td>YTD Total</td>
+                        <td className="num">{utilization.ytdAvailable}h</td>
+                        <td className="num ed-util-bill">{utilization.ytdBillable}h</td>
+                        <td className="num" style={{ color: utilColorFn(utilization.ytdPct) }}>{utilization.ytdPct}%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="ed-sect">
+            <h3>Project History <span className="ed-cnt">({visibleHistory.length})</span></h3>
+            <div className="ed-tools">
+              <SearchableSelect
+                variant="ghost"
+                value={historyYear}
+                options={historyYearOpts}
+                onChange={setHistoryYear}
+              />
+            </div>
+          </div>
+          {visibleHistory.length === 0 ? (
+            <p className="ed-empty">No project assignments yet.</p>
+          ) : (
+            <div className="ed-tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th className="grow">Project</th>
+                    <th>Client</th>
+                    <th className="ctr">Type</th>
+                    <th>Dates</th>
+                    <th className="num">Hours</th>
+                    <th className="ctr">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleHistory.map((a) => {
+                    const p = a.projects!
+                    const pType = p.project_type || 'billable'
+                    const today = new Date().toISOString().slice(0, 10)
+                    const isCurrent = a.start_date <= today && a.end_date >= today
+                    const isPast = a.end_date < today
+                    const statusCls = isCurrent ? 'active' : isPast ? 'done' : 'up'
+                    const statusLabel = isCurrent ? 'Active' : isPast ? 'Completed' : 'Upcoming'
+                    return (
+                      <tr key={a.id}>
+                        <td className="grow"><Link to={`/projects/${p.id}`} className="ed-plink" title={p.project_name}>{p.project_name}</Link></td>
+                        <td>{p.client_name}</td>
+                        <td className="ctr">
+                          <span className="ed-ptype" style={{ color: projectTypeColor(pType) }}>{projectTypeLabel(pType)}</span>
+                        </td>
+                        <td className="ed-dt">
+                          {new Date(a.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          {' — '}
+                          {new Date(a.end_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </td>
+                        <td className="num ed-hrs">{a.total_hours}h</td>
+                        <td className="ctr"><span className={`ed-pill ed-pill--${statusCls}`}>{statusLabel}</span></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {isPmoAdmin && (
+            <>
+              <div className="ed-sect">
+                <h3>Cost Rate History <span className="ed-cnt">({costRates.length})</span></h3>
+                {!showAddRate && (
+                  <div className="ed-tools">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setNewRate('')
+                        setNewEffectiveDate(new Date().toISOString().slice(0, 10))
+                        setShowAddRate(true)
+                      }}
+                    >
+                      + Add Rate
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {showAddRate && (
+                <div className="ed-rate-form">
+                  <div className="ed-field">
+                    <label className="ed-field-label">Hourly rate ($)</label>
+                    <input
+                      autoFocus
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="ed-rate-input"
+                      value={newRate}
+                      onChange={e => setNewRate(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="ed-field">
+                    <label className="ed-field-label">Effective date</label>
+                    <DatePicker value={newEffectiveDate} onChange={(v) => setNewEffectiveDate(v)} ariaLabel="Effective date" />
+                  </div>
+                  <div className="ed-rate-form-actions">
+                    <Button variant="secondary" size="sm" onClick={() => setShowAddRate(false)}>Cancel</Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      loading={savingRate}
+                      disabled={savingRate || !newRate || !newEffectiveDate}
+                      onClick={async () => {
+                        const val = parseFloat(newRate)
+                        if (isNaN(val) || val < 0) return
+                        setSavingRate(true)
+                        try {
+                          await api.addCostRate({
+                            consultant_id: consultant.id,
+                            hourly_rate: val,
+                            effective_date: newEffectiveDate,
+                          })
+                          setShowAddRate(false)
+                          if (id) await loadData(id)
+                        } catch (err: unknown) {
+                          alert('Error adding cost rate: ' + errMessage(err))
+                        }
+                        setSavingRate(false)
+                      }}
+                    >
+                      {savingRate ? 'Saving…' : 'Save'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {costRates.length === 0 ? (
+                <p className="ed-empty">No cost rates recorded. Click "Add Rate" to set one.</p>
+              ) : (
+                <div className="ed-tbl-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Rate</th>
+                        <th>Effective Date</th>
+                        <th>Status</th>
+                        <th>Added By</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {costRates.map((cr) => {
+                        const today = new Date().toISOString().slice(0, 10)
+                        const isActive = cr.effective_date <= today &&
+                          !costRates.some(other => other.effective_date > cr.effective_date && other.effective_date <= today)
+                        const isScheduled = cr.effective_date > today
+                        return (
+                          <tr key={cr.id}>
+                            <td className="ed-hrs">${cr.hourly_rate}/hr</td>
+                            <td className="ed-dt">
+                              {new Date(cr.effective_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                             </td>
-                            <td style={{ padding: '0.3rem 0.5rem', fontSize: '0.8rem', textAlign: 'right', borderBottom: '1px solid var(--border-subtle)' }}>
-                              <span style={{ color: typeColor, fontWeight: 600 }}>{a.hours}h</span>
-                              <span style={{ color: typeColor, fontSize: '0.65rem', marginLeft: '0.25rem', opacity: 0.8 }}>{typeLabel}</span>
+                            <td>
+                              {isActive && <span className="ed-pill ed-pill--active">Active</span>}
+                              {isScheduled && <span className="ed-pill ed-pill--up">Scheduled</span>}
                             </td>
-                            <td style={{ borderBottom: '1px solid var(--border-subtle)' }}></td>
+                            <td className="ed-cell-muted">{cr.created_by || '—'}</td>
+                            <td className="num">
+                              <span className="ed-rowact">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="ed-xdel"
+                                  title="Delete this rate"
+                                  onClick={async () => {
+                                    if (!confirm(`Delete $${cr.hourly_rate}/hr rate effective ${cr.effective_date}?`)) return
+                                    try {
+                                      await api.deleteCostRate(cr.id)
+                                      if (id) await loadData(id)
+                                    } catch (err: unknown) {
+                                      alert('Error deleting cost rate: ' + errMessage(err))
+                                    }
+                                  }}
+                                >
+                                  &times;
+                                </Button>
+                              </span>
+                            </td>
                           </tr>
                         )
                       })}
-                    </React.Fragment>
-                  )
-                })}
-                <tr style={{ borderTop: '2px solid var(--border)' }}>
-                  <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', fontWeight: 700 }}>YTD Total</td>
-                  <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', textAlign: 'right', fontWeight: 700 }}>{utilization.ytdAvailable}h</td>
-                  <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', textAlign: 'right', fontWeight: 700, color: 'var(--brand-green)' }}>{utilization.ytdBillable}h</td>
-                  <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', textAlign: 'right', fontWeight: 700, color: utilColorFn(utilization.ytdPct) }}>{utilization.ytdPct}%</td>
-                </tr>
-              </tbody>
-            </table>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
-      )}
-
-      {/* Skills section */}
-      <div style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 8,
-        padding: '1.5rem',
-      }}>
-        <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem' }}>Skills</h3>
-        {engSkills.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', margin: 0 }}>
-            No skills assigned yet. Manage skills on the <Link to="/skills" style={{ color: 'var(--brand-green)' }}>Skills Matrix</Link> page.
-          </p>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {engSkills.map(s => (
-              <div key={s.id} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                background: `color-mix(in srgb, transparent 88%, ${RATING_COLORS[s.rating]})`,
-                border: `1px solid ${RATING_COLORS[s.rating]}30`,
-                borderRadius: 6,
-                padding: '0.4rem 0.75rem',
-              }}>
-                <span style={{ color: RATING_COLORS[s.rating], fontWeight: 600, fontSize: '0.85rem' }}>
-                  {s.name}
-                </span>
-                <span style={{
-                  fontSize: '0.65rem',
-                  color: RATING_COLORS[s.rating],
-                  opacity: 0.8,
-                  fontWeight: 500,
-                }}>
-                  {RATING_LABELS[s.rating]}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
-
-      {/* Project History */}
-      <div style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 8,
-        padding: '1.5rem',
-        marginTop: '1.5rem',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h3 style={{ margin: 0, fontSize: '1rem' }}>Project History</h3>
-          <select
-            value={historyYear}
-            onChange={e => setHistoryYear(e.target.value)}
-            style={{
-              background: 'var(--bg-input)', border: '1px solid var(--border-subtle)',
-              borderRadius: 4, color: 'var(--text-primary)', fontSize: '0.8rem',
-              padding: '0.3rem 0.5rem',
-            }}
-          >
-            <option value="all">All Years</option>
-            {Array.from({ length: new Date().getFullYear() - 2025 }, (_, i) => String(new Date().getFullYear() - i)).map(y => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-        </div>
-        {projectHistory.filter(a => a.projects && a.projects.project_type !== 'pto').filter(a => {
-          if (historyYear === 'all') return true
-          const y = parseInt(historyYear)
-          return a.start_date.startsWith(historyYear) || a.end_date.startsWith(historyYear) ||
-            (new Date(a.start_date + 'T00:00:00').getFullYear() <= y && new Date(a.end_date + 'T00:00:00').getFullYear() >= y)
-        }).length === 0 ? (
-          <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.85rem' }}>
-            No project assignments yet.
-          </p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Project</th>
-                <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Client</th>
-                <th style={{ textAlign: 'center', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Type</th>
-                <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Dates</th>
-                <th style={{ textAlign: 'right', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Hours</th>
-                <th style={{ textAlign: 'center', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projectHistory.filter(a => a.projects && a.projects.project_type !== 'pto').filter(a => {
-                if (historyYear === 'all') return true
-                const y = parseInt(historyYear)
-                return a.start_date.startsWith(historyYear) || a.end_date.startsWith(historyYear) ||
-                  (new Date(a.start_date + 'T00:00:00').getFullYear() <= y && new Date(a.end_date + 'T00:00:00').getFullYear() >= y)
-              }).map((a) => {
-                const p = a.projects
-                if (!p) return null
-                const pType = p.project_type || 'billable'
-                const typeColor = pType === 'pto' ? '#D6B25E' : pType === 'non_billable' ? '#0F9F8A' : '#00A86B'
-                const typeLabel = pType === 'pto' ? 'PTO' : pType === 'non_billable' ? 'Non-Billable' : 'Billable'
-                const today = new Date().toISOString().slice(0, 10)
-                const isCurrent = a.start_date <= today && a.end_date >= today
-                const isPast = a.end_date < today
-                return (
-                  <tr key={a.id}>
-                    <td style={{ padding: '0.5rem 0.5rem', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid var(--border-subtle)' }}>
-                      <Link to={`/projects/${p.id}`} style={{ color: 'var(--brand-green)', textDecoration: 'none' }}>
-                        {p.project_name}
-                      </Link>
-                    </td>
-                    <td style={{ padding: '0.5rem 0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-subtle)' }}>
-                      {p.client_name}
-                    </td>
-                    <td style={{ padding: '0.5rem 0.5rem', textAlign: 'center', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <span style={{ color: typeColor, fontSize: '0.75rem', fontWeight: 600 }}>{typeLabel}</span>
-                    </td>
-                    <td style={{ padding: '0.5rem 0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-subtle)', whiteSpace: 'nowrap' }}>
-                      {new Date(a.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      {' — '}
-                      {new Date(a.end_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </td>
-                    <td style={{ padding: '0.5rem 0.5rem', fontSize: '0.85rem', fontWeight: 600, textAlign: 'right', borderBottom: '1px solid var(--border-subtle)' }}>
-                      {a.total_hours}h
-                    </td>
-                    <td style={{ padding: '0.5rem 0.5rem', textAlign: 'center', borderBottom: '1px solid var(--border-subtle)' }}>
-                      {isCurrent && (
-                        <span style={{
-                          background: 'rgba(40, 163, 106, 0.15)',
-                          color: '#28A36A',
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: 10,
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                        }}>Active</span>
-                      )}
-                      {isPast && (
-                        <span style={{
-                          background: 'rgba(138, 90, 93, 0.2)',
-                          color: 'var(--text-muted)',
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: 10,
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                        }}>Completed</span>
-                      )}
-                      {!isCurrent && !isPast && (
-                        <span style={{
-                          background: 'rgba(17, 195, 219, 0.15)',
-                          color: 'var(--brand-green)',
-                          padding: '0.15rem 0.5rem',
-                          borderRadius: 10,
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                        }}>Upcoming</span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Cost Rate History — PMO Admin only */}
-      {isPmoAdmin && (
-        <div style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 8,
-          padding: '1.5rem',
-          marginTop: '1.5rem',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1rem' }}>Cost Rate History</h3>
-            {!showAddRate && (
-              <button
-                onClick={() => {
-                  setNewRate('')
-                  setNewEffectiveDate(new Date().toISOString().slice(0, 10))
-                  setShowAddRate(true)
-                }}
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--brand-green)',
-                  color: 'var(--brand-green)',
-                  padding: '0.35rem 0.75rem',
-                  fontSize: '0.8rem',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                }}
-              >
-                Add Rate
-              </button>
-            )}
-          </div>
-
-          {/* Add rate form */}
-          {showAddRate && (
-            <div style={{
-              background: 'var(--bg-input)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              padding: '1rem',
-              marginBottom: '1rem',
-            }}>
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div>
-                  <label style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', display: 'block', marginBottom: '0.25rem' }}>
-                    Hourly Rate ($)
-                  </label>
-                  <input
-                    autoFocus
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={newRate}
-                    onChange={e => setNewRate(e.target.value)}
-                    placeholder="0.00"
-                    style={{
-                      padding: '0.4rem 0.6rem',
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 4,
-                      color: 'var(--text-primary)',
-                      fontSize: '0.85rem',
-                      width: '100px',
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', display: 'block', marginBottom: '0.25rem' }}>
-                    Effective Date
-                  </label>
-                  <input
-                    type="date"
-                    value={newEffectiveDate}
-                    onChange={e => setNewEffectiveDate(e.target.value)}
-                    style={{
-                      padding: '0.4rem 0.6rem',
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 4,
-                      color: 'var(--text-primary)',
-                      fontSize: '0.85rem',
-                    }}
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    onClick={() => setShowAddRate(false)}
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text-secondary)',
-                      padding: '0.4rem 0.75rem',
-                      fontSize: '0.8rem',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    disabled={savingRate || !newRate || !newEffectiveDate}
-                    onClick={async () => {
-                      const val = parseFloat(newRate)
-                      if (isNaN(val) || val < 0) return
-                      setSavingRate(true)
-                      try {
-                        await api.addCostRate({
-                          consultant_id: consultant.id,
-                          hourly_rate: val,
-                          effective_date: newEffectiveDate,
-                        })
-                        setShowAddRate(false)
-                        if (id) await loadData(id)
-                      } catch (err: any) {
-                        alert('Error adding cost rate: ' + (err.message || err))
-                      }
-                      setSavingRate(false)
-                    }}
-                    style={{
-                      background: 'var(--brand-green)',
-                      border: 'none',
-                      color: '#fff',
-                      padding: '0.4rem 0.75rem',
-                      fontSize: '0.8rem',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                      opacity: savingRate || !newRate || !newEffectiveDate ? 0.5 : 1,
-                    }}
-                  >
-                    {savingRate ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Rate history table */}
-          {costRates.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.85rem' }}>
-              No cost rates recorded. Click "Add Rate" to set one.
-            </p>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Rate</th>
-                  <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Effective Date</th>
-                  <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Status</th>
-                  <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>Added By</th>
-                  <th style={{ width: '1%', padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--border-subtle)' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {costRates.map((cr) => {
-                  const today = new Date().toISOString().slice(0, 10)
-                  const isActive = cr.effective_date <= today &&
-                    !costRates.some(other => other.effective_date > cr.effective_date && other.effective_date <= today)
-                  const isScheduled = cr.effective_date > today
-                  return (
-                    <tr key={cr.id}>
-                      <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', fontWeight: 600, borderBottom: '1px solid var(--border-subtle)' }}>
-                        ${cr.hourly_rate}/hr
-                      </td>
-                      <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.85rem', borderBottom: '1px solid var(--border-subtle)' }}>
-                        {new Date(cr.effective_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </td>
-                      <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.75rem', borderBottom: '1px solid var(--border-subtle)' }}>
-                        {isActive && (
-                          <span style={{
-                            background: 'rgba(40, 163, 106, 0.15)',
-                            color: '#28A36A',
-                            padding: '0.15rem 0.5rem',
-                            borderRadius: 10,
-                            fontSize: '0.7rem',
-                            fontWeight: 600,
-                          }}>Active</span>
-                        )}
-                        {isScheduled && (
-                          <span style={{
-                            background: 'rgba(17, 195, 219, 0.15)',
-                            color: 'var(--brand-green)',
-                            padding: '0.15rem 0.5rem',
-                            borderRadius: 10,
-                            fontSize: '0.7rem',
-                            fontWeight: 600,
-                          }}>Scheduled</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>
-                        {cr.created_by || '—'}
-                      </td>
-                      <td style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`Delete $${cr.hourly_rate}/hr rate effective ${cr.effective_date}?`)) return
-                            try {
-                              await api.deleteCostRate(cr.id)
-                              if (id) await loadData(id)
-                            } catch (err: any) {
-                              alert('Error deleting cost rate: ' + (err.message || err))
-                            }
-                          }}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--text-muted)',
-                            cursor: 'pointer',
-                            fontSize: '0.75rem',
-                            padding: '0.2rem 0.4rem',
-                            borderRadius: 4,
-                          }}
-                          title="Delete this rate"
-                          onMouseEnter={e => (e.currentTarget.style.color = '#ff6b6b')}
-                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-                        >
-                          &times;
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
     </div>
   )
 }
 
+/* ds-allow: semantic utilization heat ramp — no token */
 function utilColorFn(pct: number): string {
   if (pct >= 85) return '#28A36A'
   if (pct >= 70) return '#7CB342'
   if (pct >= 50) return '#F0C42B'
   if (pct >= 30) return '#F0642B'
-  return '#E63948'
-}
-
-function InfoCard({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
-  return (
-    <div style={{
-      background: 'var(--bg-card)',
-      border: '1px solid var(--border-subtle)',
-      borderRadius: 8,
-      padding: '1rem 1.25rem',
-      overflow: 'hidden',
-    }}>
-      <div style={{
-        fontSize: '0.7rem',
-        fontWeight: 600,
-        color: 'var(--text-muted)',
-        textTransform: 'uppercase',
-        letterSpacing: '0.05em',
-        marginBottom: '0.25rem',
-      }}>
-        {label}
-      </div>
-      <div title={value} style={{
-        fontSize: '1rem',
-        fontWeight: 600,
-        color: muted ? 'var(--text-muted)' : 'var(--text-primary)',
-        fontStyle: muted ? 'italic' : 'normal',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}>
-        {value}
-      </div>
-    </div>
-  )
+  return '#B65540'
 }

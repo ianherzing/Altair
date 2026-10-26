@@ -1,7 +1,4 @@
-/* Inter (current body font, kept for backward-compat until pages are redesigned) */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-/* Geist Sans + Mono (self-hosted, used by new primitives + redesigned pages) */
+/* Geist Sans + Mono (self-hosted) — the app-wide type system. */
 @import '@fontsource-variable/geist/index.css';
 @import '@fontsource-variable/geist-mono/index.css';
 
@@ -88,11 +85,50 @@
   --accent-green-glow: rgba(214, 178, 94, 0.22);
   --accent-red-glow: rgba(182, 85, 64, 0.22);
 
+  /* Compatibility aliases so page CSS ported from the upstream shell can keep
+     its token names. The values stay Altair gold and rust. */
+  --brand-cyan: var(--brand-green);
+  --brand-cyan-dark: var(--brand-green-dark);
+  --accent-cyan-glow: var(--accent-green-glow);
+
+  --scrollbar-thumb: rgba(232, 219, 192, 0.22);
+  --scrollbar-thumb-hover: rgba(232, 219, 192, 0.38);
+
+  /* Resourcing bars — Altair hues, same roles as the upstream grid. */
+  --bar-billable-hard: #006C35;
+  --bar-billable-soft-a: #D6B25E;
+  --bar-billable-soft-b: #8C6E2F;
+  --bar-nonbill: #3DDC84;
+  --bar-pto: #C9654F;
+  --bar-text-light: #ffffff;
+  --bar-text-dark: #0A1410;
+  --bar-hairline: rgba(232, 219, 192, 0.18);
+  --util-chip-bg: rgba(8, 19, 15, 0.72);
+  --util-chip-text: #F7FFF8;
+  --util-chip-text-over: #E7A090;
+  --resourcing-overalloc: rgba(182, 85, 64, 0.16);
+
+  --alert-kickoff: #B65540;
+  --alert-kickoff-tint: rgba(182, 85, 64, 0.18);
+  --alert-kickoff-border: rgba(182, 85, 64, 0.33);
+  --alert-kickoff-chip: rgba(182, 85, 64, 0.25);
+  --alert-kickoff-text: #F0B2A4;
+  --alert-readout: #D6B25E;
+  --alert-readout-tint: rgba(214, 178, 94, 0.18);
+  --alert-readout-border: rgba(214, 178, 94, 0.33);
+  --alert-readout-chip: rgba(214, 178, 94, 0.25);
+  --alert-readout-text: #F3E2B4;
+  --card-tile: #10241B;
+  --card-tile-kickoff: #10241B;
+  --card-tile-readout: #10241B;
+  --card-inset: rgba(247, 255, 248, 0.03);
+  --date-chip-bg: rgba(247, 255, 248, 0.07);
+
   /* ─────────────────────────────────────────────────────────────
      Type system
      ───────────────────────────────────────────────────────────── */
-  --font-sans: 'Inter', 'Geist Variable', system-ui, -apple-system, sans-serif;
-  --font-display: 'Geist Variable', 'Inter', system-ui, sans-serif;
+  --font-sans: 'Geist Variable', system-ui, -apple-system, sans-serif;
+  --font-display: 'Geist Variable', system-ui, sans-serif;
   --font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --text-xs: 11px;
@@ -183,7 +219,27 @@
 
   --accent-green-glow: rgba(214, 178, 94, 0.16);
   --accent-red-glow: rgba(182, 85, 64, 0.14);
+  --scrollbar-thumb: rgba(20, 32, 26, 0.22);
+  --scrollbar-thumb-hover: rgba(20, 32, 26, 0.36);
+  --bar-hairline: rgba(20, 32, 26, 0.16);
+  --util-chip-bg: rgba(255, 255, 255, 0.72);
+  --util-chip-text: #14201A;
+  --util-chip-text-over: #8C3A28;
 }
+
+/* Scrollbars — 6px, no track, faint thumb. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-pill);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+*::-webkit-scrollbar-corner { background: transparent; }
 
 body {
   min-height: 100vh;
@@ -193,10 +249,7 @@ body {
   min-height: 100vh;
 }
 
-/* ───────────────────────────────────────────────────────────────
-   Headings — kept on Inter for now (no visible page changes).
-   Redesigned pages opt into Geist via the primitives.
-   ─────────────────────────────────────────────────────────────── */
+/* Headings inherit Geist via --font-sans. */
 h1, h2, h3 {
   color: var(--text-primary);
   font-weight: 700;
@@ -266,3 +319,107 @@ button:hover {
 *:focus-visible:hover {
   outline-offset: 3px;
 }
+
+.kanban-card-footer { container-type: inline-size; }
+.kanban-alert-mid,
+.kanban-alert-glyph { display: none; }
+
+.ui-button.kanban-alert-dismiss {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  margin: -3px -2px -3px 0;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  font-size: var(--text-sm);
+  line-height: 1;
+  opacity: 0.6;
+}
+.ui-button.kanban-alert-dismiss::after {
+  content: '';
+  position: absolute;
+  inset: -7px -6px;
+}
+.ui-button.kanban-alert-dismiss:hover:not(:disabled),
+.ui-button.kanban-alert-dismiss:focus-visible {
+  opacity: 1;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
+@container (max-width: 232px) {
+  .kanban-alert-full { display: none; }
+  .kanban-alert-mid { display: inline; }
+}
+@container (max-width: 180px) {
+  .kanban-alert-mid { display: none; }
+  .kanban-alert-glyph { display: inline; }
+  .ui-button.kanban-alert-dismiss { display: none; }
+}
+
+.kanban-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+.kanban-ghost::placeholder { color: var(--text-muted); }
+.kanban-ghost:hover,
+.kanban-ghost:focus,
+.kanban-ghost:focus-within {
+  background: var(--bg-card);
+  border-color: var(--border-soft);
+  color: var(--text-primary);
+}
+
+.ui-button.view-tab {
+  font-family: var(--font-display);
+  font-size: var(--text-base);
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  margin-bottom: -1px;
+  padding: 6px 2px 8px;
+  color: var(--text-muted);
+  position: relative;
+}
+.ui-button.view-tab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--text-secondary);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform var(--duration-base) var(--ease-out);
+}
+.ui-button.view-tab:hover:not(:disabled),
+.ui-button.view-tab:focus-visible {
+  background: transparent;
+  color: var(--text-primary);
+  outline: none;
+  box-shadow: none;
+}
+.ui-button.view-tab:hover::after,
+.ui-button.view-tab:focus-visible::after { transform: scaleX(1); }
+.ui-button.view-tab--active {
+  color: var(--text-primary);
+  border-bottom-color: var(--brand-green);
+}
+.ui-button.view-tab--active::after { content: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ui-button.view-tab::after { transition: none; }
+}
+
+.no-spinner { -moz-appearance: textfield; appearance: textfield; }
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }

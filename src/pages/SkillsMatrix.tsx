@@ -1,7 +1,32 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { api } from '../lib/api'
 import { LoadingState } from '../components/LoadingState'
+import { PageTitle, Button, Dialog, Input } from '../components/ui'
+import { SearchableSelect } from '../components/SearchableSelect'
+import { EngagementHistoryModal } from '../components/EngagementHistoryModal'
 import { useSkillsMatrixData } from '../hooks/useSkillsMatrixData'
 import { useCurrentConsultant } from '../lib/useCurrentConsultant'
+import type { Consultant } from '../types/database'
+import { SkillsMatrixSkeleton } from './SkillsMatrixSkeleton'
+import './SkillsMatrix.css'
+
+/* 3-step semantic rating ramp — green (Basic) → yellow (Proficient) → cyan
+   (Expert). No design token exists for a semantic skill ramp, so the literals
+   live here and are applied via inline `background` (digit color = --bg-body via
+   CSS), keeping every other .tsx/.css line token-only. */
+const RATING_COLORS = ['#2BFF00', '#FFF500', '#00F5FF'] /* ds-allow: semantic skill-rating ramp (Basic/Proficient/Expert) — no token */
+const RATING_LABELS = ['Basic', 'Proficient', 'Expert']
+const RATING_DESC = [
+  'Showing interest and needs to have an expert paired with them. Still learning the fundamentals.',
+  'Can operate solo. Capable of executing engagements independently without expert pairing.',
+  'Can teach others. Deep expertise and able to mentor consultants rated 1 or 2.',
+]
+
+const NAME_W = 232
+const UTIL_W = 66
+const PASSION_W = 168
+const MIN_CELL_W = 84
+const HEAD_H = 104
 
 export function SkillsMatrix() {
   const { consultant: currentConsultant } = useCurrentConsultant()
@@ -32,499 +57,424 @@ export function SkillsMatrix() {
     loading, error, retry,
   } = useSkillsMatrixData()
 
-  if (loading || error) return <LoadingState loading={loading} error={error} retry={retry} message="Loading skills matrix..." />
+  const [historyConsultant, setHistoryConsultant] = useState<Consultant | null>(null)
+  const [pulseKey, setPulseKey] = useState<string | null>(null)
 
-  const cellWidth = 80
-  const nameColWidth = 200
-  const passionColWidth = 130
-  const headerHeight = 60
+  const [containerW, setContainerW] = useState(0)
+  const setWrapRef = useCallback((node: HTMLDivElement | null) => {
+    gridRef.current = node
+    if (!node) return
+    setContainerW(node.clientWidth)
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(entries => setContainerW(entries[0].contentRect.width))
+    ro.observe(node)
+    return () => ro.disconnect()
+  }, [gridRef])
+  const skillW = useMemo(() => {
+    if (!containerW || skills.length === 0) return MIN_CELL_W
+    const avail = containerW - NAME_W - UTIL_W - PASSION_W
+    return Math.max(MIN_CELL_W, Math.floor(avail / skills.length))
+  }, [containerW, skills.length])
 
-  const cellStyle: React.CSSProperties = {
-    width: cellWidth,
-    minWidth: cellWidth,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRight: '1px solid var(--border-subtle)',
-    borderBottom: '1px solid var(--border-subtle)',
-    cursor: 'pointer',
-    fontSize: '0.8rem',
-    fontWeight: 600,
-    outline: 'none',
-    transition: 'background 100ms',
-    userSelect: 'none',
+  if (loading) return <SkillsMatrixSkeleton />
+  if (error) return <LoadingState loading={false} error={error} retry={retry} message="Loading skills matrix..." />
+
+  const tableWidth = NAME_W + UTIL_W + PASSION_W + skills.length * skillW
+
+  const passionOptionsFor = (eng: Consultant) => {
+    const opts = [{ value: '', label: '— None —' }, ...passionAreas.map(pa => ({ value: pa.id, label: pa.name }))]
+    if (eng.passion_area_id && !passionAreas.some(pa => pa.id === eng.passion_area_id)) {
+      opts.push({ value: eng.passion_area_id, label: eng.passion_area || '—' })
+    }
+    return opts
+  }
+  const mentorOptions = (eng: Consultant) => {
+    const opts = [
+      { value: '', label: '— None —' },
+      ...allActiveConsultants.filter(m => m.id !== eng.id).map(m => ({ value: m.full_name, label: m.full_name })),
+    ]
+    if (eng.mentor && !allActiveConsultants.some(m => m.full_name === eng.mentor)) {
+      opts.push({ value: eng.mentor, label: eng.mentor })
+    }
+    return opts
   }
 
-  const filterStyle: React.CSSProperties = {
-    background: 'var(--bg-input)',
-    color: 'var(--text-primary)',
-    border: '1px solid var(--border)',
-    borderRadius: 4,
-    padding: '0.3rem 0.5rem',
-    fontSize: '0.8rem',
+  // The data hook still treats column 0 as the old passion cell (skills are
+  // 1-based) and owns 1/2/3/0/Delete/space via setRating. This grid is
+  // skills-only, so rating keys are translated and arrow/Tab stay local.
+  function onSkillKeyDown(e: ReactKeyboardEvent, rowIdx: number, colIdx: number) {
+    const ratingKey = e.key === '1' || e.key === '2' || e.key === '3' || e.key === '0' || e.key === 'Delete' || e.key === 'Backspace' || e.key === ' '
+    if (ratingKey) {
+      handleKeyDown(e, rowIdx, colIdx + 1)
+      return
+    }
+    const totalCols = skills.length
+    const totalRows = filtered.length
+    if (totalCols === 0 || totalRows === 0) return
+    let nextRow = rowIdx
+    let nextCol = colIdx
+    if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault()
+      nextCol++
+      if (nextCol >= totalCols) { nextCol = 0; nextRow++ }
+      if (nextRow >= totalRows) nextRow = 0
+    } else if (e.key === 'Tab' && e.shiftKey) {
+      e.preventDefault()
+      nextCol--
+      if (nextCol < 0) { nextCol = totalCols - 1; nextRow-- }
+      if (nextRow < 0) nextRow = totalRows - 1
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      nextCol = Math.min(nextCol + 1, totalCols - 1)
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      nextCol = Math.max(nextCol - 1, 0)
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      nextRow = Math.min(nextRow + 1, totalRows - 1)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      nextRow = Math.max(nextRow - 1, 0)
+    } else {
+      return
+    }
+    document.getElementById(`cell-${nextRow}-${nextCol}`)?.focus()
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 4rem)' }}>
-      {/* Title + controls -- fixed */}
-      <div style={{ flexShrink: 0, padding: '0 0 0.5rem 0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <h2 style={{ margin: 0 }}>Skills &amp; Passion Areas</h2>
-            <button
-              onClick={() => setShowInfo(true)}
-              title="About skill ratings & passion areas"
-              style={{
-                background: 'transparent', border: '1px solid var(--border-subtle)',
-                borderRadius: '50%', width: 22, height: 22,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: 'var(--text-muted)',
-                fontSize: '0.7rem', fontWeight: 700, fontStyle: 'italic',
-                fontFamily: 'Georgia, serif', padding: 0, lineHeight: 1,
-              }}
-            >
-              i
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            <select value={filterManager} onChange={e => setFilterManager(e.target.value)} style={filterStyle}>
-              <option value="">All Managers</option>
-              {managers.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-            <select value={filterMentor} onChange={e => setFilterMentor(e.target.value)} style={filterStyle}>
-              <option value="">All Mentors</option>
-              {mentorsList.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-            <input
-              value={newSkillName}
-              onChange={e => setNewSkillName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAddSkill()}
-              placeholder="New skill name..."
-              style={{ ...filterStyle, width: 150 }}
-            />
-            <button
-              onClick={handleAddSkill}
-              disabled={addingSkill || !newSkillName.trim()}
-              style={{
-                background: 'var(--brand-green-dark)', color: '#fff',
-                border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.8rem',
-                borderRadius: 4, cursor: 'pointer', opacity: addingSkill || !newSkillName.trim() ? 0.5 : 1,
-              }}
-            >
-              + Skill
-            </button>
-            <span style={{ color: 'var(--border)', margin: '0 0.15rem' }}>|</span>
-            <input
-              value={newPassionName}
-              onChange={e => setNewPassionName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAddPassion()}
-              placeholder="New passion..."
-              style={{ ...filterStyle, width: 120 }}
-            />
-            <button
-              onClick={handleAddPassion}
-              disabled={addingPassion || !newPassionName.trim()}
-              style={{
-                background: '#FD7E14', color: '#fff',
-                border: 'none', padding: '0.35rem 0.75rem', fontSize: '0.8rem',
-                borderRadius: 4, cursor: 'pointer', opacity: addingPassion || !newPassionName.trim() ? 0.5 : 1,
-              }}
-            >
-              + Passion
-            </button>
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', color: 'var(--text-muted)', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            {[
-              { rating: '1', label: 'Basic', color: '#7CB342' },
-              { rating: '2', label: 'Proficient', color: '#FFA726' },
-              { rating: '3', label: 'Expert', color: '#11C3DB' },
-            ].map(r => (
-              <span key={r.rating} style={{
-                display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                background: `color-mix(in srgb, transparent 85%, ${r.color})`,
-                border: `1px solid ${r.color}40`,
-                borderRadius: 4, padding: '0.15rem 0.4rem',
-              }}>
-                <strong style={{ color: r.color }}>{r.rating}</strong>
-                <span style={{ color: 'var(--text-muted)' }}>{r.label}</span>
-              </span>
-            ))}
-          </div>
-          <span style={{ color: 'var(--border)', fontSize: '0.8rem' }}>|</span>
-          <span>{filtered.length} consultants &bull; {skills.length} skills</span>
+    <div className="skm">
+      <div className="skm-head">
+        <div className="skm-titlewrap">
+          <PageTitle title="Skills & Passion Areas" style={{ margin: 0 }} />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="skm-info"
+            aria-label="About skill ratings & passion areas"
+            title="About skill ratings & passion areas"
+            onClick={() => setShowInfo(true)}
+          >
+            i
+          </Button>
         </div>
       </div>
 
-      {/* Grid -- scrollable, fills remaining space */}
-      <div ref={gridRef} style={{
-        flex: 1,
-        overflow: 'auto',
-        border: '1px solid var(--border)',
-        borderRadius: 6,
-        background: 'var(--bg-card)',
-        minHeight: 0,
-      }}>
-        <div style={{ display: 'inline-flex', flexDirection: 'column' }}>
-          {/* Header row with angled skill names */}
-          <div style={{ display: 'flex', position: 'sticky', top: 0, zIndex: 3 }}>
-            {/* Name header */}
-            <div style={{
-              width: nameColWidth, minWidth: nameColWidth,
-              height: headerHeight,
-              padding: '0 0.75rem',
-              display: 'flex', alignItems: 'flex-end', paddingBottom: '0.4rem',
-              fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-secondary)',
-              borderBottom: '2px solid var(--border)',
-              borderRight: '1px solid var(--border-subtle)',
-              position: 'sticky', left: 0, zIndex: 4,
-              background: 'var(--bg-card)',
-            }}>
-              CONSULTANT
-            </div>
-            {/* Util Target header */}
-            <div style={{
-              width: 65, minWidth: 65,
-              height: headerHeight,
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              paddingBottom: '0.4rem',
-              fontSize: '0.6rem', fontWeight: 600, color: 'var(--text-secondary)',
-              borderBottom: '2px solid var(--border)',
-              borderRight: '1px solid var(--border-subtle)',
-              background: 'color-mix(in srgb, var(--bg-card) 90%, #28A36A)',
-            }}>
-              UTIL %
-            </div>
-            {/* Passion header */}
-            <div style={{
-              width: passionColWidth, minWidth: passionColWidth,
-              height: headerHeight,
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              paddingBottom: '0.4rem',
-              fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-secondary)',
-              borderBottom: '2px solid var(--border)',
-              borderRight: '1px solid var(--border-subtle)',
-              background: 'color-mix(in srgb, var(--bg-card) 90%, #FD7E14)',
-            }}>
-              PASSION
-            </div>
-            {/* Skill headers -- horizontal wrapped */}
-            {skills.map(s => (
-              <div
-                key={s.id}
-                title={s.name}
-                style={{
-                  width: cellWidth, minWidth: cellWidth,
-                  height: headerHeight,
-                  display: 'flex',
-                  alignItems: 'flex-end',
-                  justifyContent: 'center',
-                  paddingBottom: '0.3rem',
-                  borderBottom: '2px solid var(--border)',
-                  borderRight: '1px solid var(--border-subtle)',
-                  background: 'var(--bg-card)',
-                }}
-              >
-                <span style={{
-                  fontSize: '0.6rem',
-                  fontWeight: 600,
-                  color: 'var(--text-secondary)',
-                  textAlign: 'center',
-                  lineHeight: 1.3,
-                  overflow: 'hidden',
-                  display: '-webkit-box',
-                  WebkitLineClamp: 3,
-                  WebkitBoxOrient: 'vertical',
-                  wordBreak: 'break-word',
-                  padding: '0 2px',
-                }}>
-                  {s.name}
-                </span>
-              </div>
-            ))}
+      <div className="skm-filters">
+        <SearchableSelect
+          variant="ghost"
+          value={filterManager}
+          onChange={setFilterManager}
+          options={[{ value: '', label: 'All Managers' }, ...managers.map(m => ({ value: m, label: m }))]}
+          placeholder="Manager"
+        />
+        <SearchableSelect
+          variant="ghost"
+          value={filterMentor}
+          onChange={setFilterMentor}
+          options={[{ value: '', label: 'All Mentors' }, ...mentorsList.map(m => ({ value: m, label: m }))]}
+          placeholder="Mentor"
+        />
+        <span className="skm-tdiv" aria-hidden="true" />
+        <AddPopover
+          title="Add a new skill column"
+          placeholder="e.g. Threat Hunting"
+          buttonLabel="Skill"
+          value={newSkillName}
+          onChange={setNewSkillName}
+          onAdd={handleAddSkill}
+          adding={addingSkill}
+        />
+        <AddPopover
+          title="Add a new passion area"
+          placeholder="e.g. AI/ML Security"
+          buttonLabel="Passion"
+          value={newPassionName}
+          onChange={setNewPassionName}
+          onAdd={handleAddPassion}
+          adding={addingPassion}
+        />
+
+        <div className="skm-legend">
+          {RATING_LABELS.map((label, i) => (
+            <span className="skm-legend-i" key={label}>
+              <span className="skm-legend-sw" style={{ background: RATING_COLORS[i] }}>{i + 1}</span>
+              {label}
+            </span>
+          ))}
+          <span style={{ color: 'var(--border)' }}>·</span>
+          <span>{filtered.length} consultants · {skills.length} skills</span>
+        </div>
+      </div>
+
+      <div ref={setWrapRef} className="skm-wrap">
+        {filtered.length === 0 ? (
+          <div className="skm-empty-state">
+            No consultants found
+            {filterManager ? ` for manager "${filterManager}"` : ''}
+            {filterMentor ? ` for mentor "${filterMentor}"` : ''}.
           </div>
-
-          {/* Data rows */}
-          {filtered.map((eng, rowIdx) => (
-            <div key={eng.id} style={{
-              display: 'flex',
-              alignItems: 'stretch',
-              minHeight: 36,
-              background: rowIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
-            }}>
-              {/* Consultant name -- sticky left */}
-              <div style={{
-                width: nameColWidth, minWidth: nameColWidth,
-                padding: '0.25rem 0.75rem',
-                display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                borderRight: '1px solid var(--border-subtle)',
-                borderBottom: '1px solid var(--border-subtle)',
-                position: 'sticky', left: 0, zIndex: 1,
-                background: rowIdx % 2 === 0 ? 'var(--bg-card)' : 'color-mix(in srgb, var(--bg-card) 97%, white)',
-              }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  {eng.full_name}
-                </span>
-                <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
-                  {eng.title || ''}
-                </span>
-                {(() => {
-                  const isOwnRow = currentConsultant?.id === eng.id
-                  const canEditMentor = canWrite || isOwnRow
-                  return canEditMentor ? (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.55rem', color: 'var(--brand-green)', opacity: 0.85 }}>
-                    <span>Mentor:</span>
-                    <select
-                      value={eng.mentor || ''}
-                      onChange={async (e) => {
-                        const newMentor = e.target.value || null
-                        const prev = eng.mentor
-                        setConsultants(prev2 => prev2.map(en => en.id === eng.id ? { ...en, mentor: newMentor } : en))
-                        try {
-                          // Self-edit uses the JWT-scoped RPC; other rows (admin/leadership only) use the general RPC.
-                          if (isOwnRow && !canWrite) {
-                            await api.updateOwnMentor(newMentor)
-                          } else {
-                            await api.updateConsultant(eng.id, { mentor: newMentor })
-                          }
-                        } catch (err: unknown) {
-                          const message = err instanceof Error ? err.message : 'Unknown error'
-                          alert('Error updating mentor: ' + message)
-                          setConsultants(prev2 => prev2.map(en => en.id === eng.id ? { ...en, mentor: prev } : en))
-                        }
-                      }}
-                      tabIndex={-1}
-                      style={{
-                        background: 'transparent', color: 'var(--brand-green)',
-                        border: 'none', fontSize: '0.55rem',
-                        cursor: 'pointer', padding: 0, outline: 'none',
-                        colorScheme: 'dark', maxWidth: '10rem',
-                      }}
-                    >
-                      <option value="" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>— None —</option>
-                      {allActiveConsultants
-                        .filter(m => m.id !== eng.id)
-                        .map(m => (
-                          <option key={m.id} value={m.full_name} style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                            {m.full_name}
-                          </option>
-                        ))}
-                      {eng.mentor && !allActiveConsultants.some(m => m.full_name === eng.mentor) && (
-                        <option value={eng.mentor} style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
-                          {eng.mentor}
-                        </option>
-                      )}
-                    </select>
-                  </span>
-                ) : eng.mentor ? (
-                  <span style={{ fontSize: '0.55rem', color: 'var(--brand-green)', opacity: 0.7 }}>
-                    Mentor: {eng.mentor}
-                  </span>
-                ) : null
-                })()}
-              </div>
-
-              {/* Util target cell */}
-              <div style={{
-                width: 65, minWidth: 65,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRight: '1px solid var(--border-subtle)',
-                borderBottom: '1px solid var(--border-subtle)',
-              }}>
-                {canWrite ? (
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={eng.utilization_target}
-                    onChange={async (e) => {
-                      const val = parseInt(e.target.value)
-                      if (isNaN(val) || val < 0 || val > 100) return
-                      setConsultants(prev => prev.map(en => en.id === eng.id ? { ...en, utilization_target: val } : en))
-                      try {
-                        await api.updateConsultantUtilizationTarget(eng.id, val)
-                      } catch (err: unknown) {
-                        const message = err instanceof Error ? err.message : 'Unknown error'
-                        console.error(err)
-                        alert('Error saving target: ' + message)
-                      }
-                    }}
-                    style={{
-                      background: 'transparent', color: '#28A36A', border: 'none',
-                      fontSize: '0.75rem', fontWeight: 600, textAlign: 'center',
-                      width: '100%', padding: '0.25rem', outline: 'none',
-                    }}
-                  />
-                ) : (
-                  <span style={{ color: '#28A36A', fontSize: '0.75rem', fontWeight: 600 }}>
-                    {eng.utilization_target}
-                  </span>
-                )}
-              </div>
-
-              {/* Passion area cell */}
-              <div
-                id={`cell-${rowIdx}-0`}
-                tabIndex={0}
-                onFocus={() => setFocusedCell({ consultantId: eng.id, skillId: 'passion' })}
-                onBlur={() => setFocusedCell(null)}
-                onKeyDown={e => handleKeyDown(e, rowIdx, 0)}
-                style={{
-                  width: passionColWidth, minWidth: passionColWidth,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  borderRight: '1px solid var(--border-subtle)',
-                  borderBottom: '1px solid var(--border-subtle)',
-                  outline: focusedCell?.consultantId === eng.id && focusedCell?.skillId === 'passion' ? '2px solid var(--brand-green)' : 'none',
-                  outlineOffset: -2,
-                }}
-              >
-                <select
-                  value={eng.passion_area_id || ''}
-                  onChange={e => setPassion(eng.id, e.target.value || null)}
-                  tabIndex={-1}
-                  style={{
-                    background: 'var(--bg-card)', color: 'var(--text-primary)',
-                    border: 'none', fontSize: '0.7rem',
-                    cursor: 'pointer', textAlign: 'center',
-                    width: '100%', padding: '0.25rem',
-                    outline: 'none', colorScheme: 'dark',
-                  }}
-                >
-                  <option value="" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>{'\u2014'}</option>
-                  {passionAreas.map(pa => <option key={pa.id} value={pa.id} style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>{pa.name}</option>)}
-                </select>
-              </div>
-
-              {/* Skill cells */}
-              {skills.map((skill, colIdx) => {
-                const key = `${eng.id}-${skill.id}`
-                const rating = ratingsMap.get(key)
-                const isSaving = saving === key
-                const isFocused = focusedCell?.consultantId === eng.id && focusedCell?.skillId === skill.id
-                const colors = ['', '#7CB342', '#FFA726', '#11C3DB']
-                const labels = ['', '1', '2', '3']
-
+        ) : (
+          <table className="skm-table" style={{ width: tableWidth }}>
+            <thead>
+              <tr>
+                <th className="skm-th-name" style={{ width: NAME_W, height: HEAD_H }}>
+                  <div className="skm-corner">Consultant</div>
+                </th>
+                <th className="skm-th-util" style={{ width: UTIL_W }}>
+                  <div className="skm-util-h">Util %</div>
+                </th>
+                <th className="skm-th-passion" style={{ width: PASSION_W }}>
+                  <div className="skm-passion-h">Passion Area</div>
+                </th>
+                {skills.map(s => (
+                  <th key={s.id} className="skm-th-skill" style={{ width: skillW }} title={s.name}>
+                    <div className="skm-skill-h"><span>{s.name}</span></div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((eng, rowIdx) => {
+                const isOwnRow = currentConsultant?.id === eng.id
+                const canEditMentor = canWrite || isOwnRow
                 return (
-                  <div
-                    key={key}
-                    id={`cell-${rowIdx}-${colIdx + 1}`}
-                    tabIndex={0}
-                    onClick={() => cycleRating(eng.id, skill.id)}
-                    onFocus={() => setFocusedCell({ consultantId: eng.id, skillId: skill.id })}
-                    onBlur={() => setFocusedCell(null)}
-                    onKeyDown={e => handleKeyDown(e, rowIdx, colIdx + 1)}
-                    style={{
-                      ...cellStyle,
-                      color: rating ? colors[rating] : 'var(--text-muted)',
-                      opacity: isSaving ? 0.4 : 1,
-                      outline: isFocused ? '2px solid var(--brand-green)' : 'none',
-                      outlineOffset: -2,
-                      background: rating ? `color-mix(in srgb, transparent 85%, ${colors[rating]})` : 'transparent',
-                    }}
-                  >
-                    {rating ? labels[rating] : ''}
-                  </div>
+                  <tr key={eng.id} className={rowIdx % 2 ? 'skm-zebra' : undefined}>
+                    <td className="skm-td-name">
+                      <div className="skm-nm">
+                        <div className="skm-nm-top">
+                          <span className="skm-nm-name" title={eng.full_name}>{eng.full_name}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="skm-hist"
+                            title="Show last 90 days of engagements"
+                            onClick={() => setHistoryConsultant(eng)}
+                          >
+                            HISTORY
+                          </Button>
+                        </div>
+                        <span className="skm-nm-title">{eng.title || ''}</span>
+                        {canEditMentor ? (
+                          <span className={`skm-mentor${eng.mentor ? '' : ' skm-empty'}`}>
+                            <span className="skm-mentor-l">Mentor:</span>
+                            <SearchableSelect
+                              variant="ghost"
+                              value={eng.mentor || ''}
+                              placeholder="add…"
+                              options={mentorOptions(eng)}
+                              onChange={async (val) => {
+                                const newMentor = val || null
+                                const prev = eng.mentor
+                                setConsultants(prev2 => prev2.map(en => en.id === eng.id ? { ...en, mentor: newMentor } : en))
+                                try {
+                                  if (isOwnRow && !canWrite) {
+                                    await api.updateOwnMentor(newMentor)
+                                  } else {
+                                    await api.updateConsultant(eng.id, { mentor: newMentor })
+                                  }
+                                } catch (err: unknown) {
+                                  const message = err instanceof Error ? err.message : 'Unknown error'
+                                  alert('Error updating mentor: ' + message)
+                                  setConsultants(prev2 => prev2.map(en => en.id === eng.id ? { ...en, mentor: prev } : en))
+                                }
+                              }}
+                              renderTrigger={({ value, selectedLabel }) => (
+                                <span className="skm-mentor-trigger">
+                                  <span className="skm-mentor-v">{value ? selectedLabel : 'add…'}</span>
+                                  <span className="skm-mentor-chev" aria-hidden="true">▾</span>
+                                </span>
+                              )}
+                            />
+                          </span>
+                        ) : eng.mentor ? (
+                          <span className="skm-mentor">
+                            <span className="skm-mentor-l">Mentor:</span>
+                            <span className="skm-mentor-v" style={{ color: 'var(--text-secondary)' }}>{eng.mentor}</span>
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+
+                    <td className="skm-td-util">
+                      {canWrite ? (
+                        <input
+                          className="skm-util-input"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={eng.utilization_target}
+                          onChange={async (e) => {
+                            const val = parseInt(e.target.value)
+                            if (isNaN(val) || val < 0 || val > 100) return
+                            setConsultants(prev => prev.map(en => en.id === eng.id ? { ...en, utilization_target: val } : en))
+                            try {
+                              await api.updateConsultantUtilizationTarget(eng.id, val)
+                            } catch (err: unknown) {
+                              const message = err instanceof Error ? err.message : 'Unknown error'
+                              console.error(err)
+                              alert('Error saving target: ' + message)
+                            }
+                          }}
+                        />
+                      ) : (
+                        <span className="skm-util-plain">{eng.utilization_target}</span>
+                      )}
+                    </td>
+
+                    <td className="skm-td-passion">
+                      <SearchableSelect
+                        variant="ghost"
+                        value={eng.passion_area_id || ''}
+                        placeholder="+ Passion"
+                        options={passionOptionsFor(eng)}
+                        onChange={val => setPassion(eng.id, val || null)}
+                        renderTrigger={({ value, selectedLabel }) => (
+                          <span className={`skm-pa${value ? '' : ' skm-empty'}`}>
+                            <span className="skm-pa-txt">{value ? selectedLabel : '+ Passion'}</span>
+                            <span className="skm-pa-chev" aria-hidden="true">▼</span>
+                          </span>
+                        )}
+                      />
+                    </td>
+
+                    {skills.map((skill, colIdx) => {
+                      const key = `${eng.id}-${skill.id}`
+                      const rating = ratingsMap.get(key)
+                      const isSaving = saving === key
+                      const isFocused = focusedCell?.consultantId === eng.id && focusedCell?.skillId === skill.id
+                      return (
+                        <td
+                          key={key}
+                          id={`cell-${rowIdx}-${colIdx}`}
+                          tabIndex={0}
+                          className={`skm-cell${isFocused ? ' skm-focus' : ''}${isSaving ? ' skm-saving' : ''}`}
+                          onClick={() => { setPulseKey(key); cycleRating(eng.id, skill.id) }}
+                          onFocus={() => setFocusedCell({ consultantId: eng.id, skillId: skill.id })}
+                          onBlur={() => setFocusedCell(null)}
+                          onKeyDown={e => onSkillKeyDown(e, rowIdx, colIdx)}
+                        >
+                          {rating ? (
+                            <span
+                              className={`skm-swatch${pulseKey === key ? ' skm-swatch--pop' : ''}`}
+                              style={{ background: RATING_COLORS[rating - 1] }}
+                              onAnimationEnd={() => setPulseKey(k => (k === key ? null : k))}
+                            >
+                              {rating}
+                            </span>
+                          ) : null}
+                        </td>
+                      )
+                    })}
+                  </tr>
                 )
               })}
-            </div>
-          ))}
-
-          {filtered.length === 0 && (
-            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              No consultants found{filterManager ? ` for manager "${filterManager}"` : ''}{filterMentor ? ` for mentor "${filterMentor}"` : ''}.
-            </div>
-          )}
-        </div>
+            </tbody>
+          </table>
+        )}
       </div>
 
-      {/* Info dialog */}
-      {showInfo && (
-        <div
-          onClick={() => setShowInfo(false)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 200,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)',
-              borderRadius: 8, padding: '2rem', maxWidth: 600, width: '90%',
-              maxHeight: '80vh', overflowY: 'auto',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Skill Ratings &amp; Passion Areas</h3>
-              <button
-                onClick={() => setShowInfo(false)}
-                style={{
-                  background: 'transparent', border: 'none', color: 'var(--text-muted)',
-                  fontSize: '1.2rem', cursor: 'pointer', padding: '0.25rem',
-                }}
-              >
-                &times;
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              <div>
-                <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
-                  Skill Ratings
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {[
-                    { n: '1', color: '#7CB342', label: 'Basic', desc: 'Showing interest and needs to have an expert paired with them. Still learning the fundamentals.' },
-                    { n: '2', color: '#FFA726', label: 'Proficient', desc: 'Can operate solo. Capable of executing engagements independently without expert pairing.' },
-                    { n: '3', color: '#11C3DB', label: 'Expert', desc: 'Can teach others. Deep expertise and able to mentor consultants rated 1 or 2.' },
-                  ].map(r => (
-                    <div key={r.n} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        background: `color-mix(in srgb, transparent 85%, ${r.color})`,
-                        border: `1px solid ${r.color}40`, borderRadius: 4,
-                        width: 24, height: 24, fontWeight: 700, color: r.color, fontSize: '0.85rem', flexShrink: 0,
-                      }}>{r.n}</span>
-                      <div>
-                        <strong style={{ color: r.color }}>{r.label}</strong> {'\u2014'} {r.desc}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+      <Dialog
+        open={showInfo}
+        onOpenChange={setShowInfo}
+        title="Skill Ratings & Passion Areas"
+        ariaLabel="About skill ratings and passion areas"
+        width={560}
+        footer={<><span /><Button variant="secondary" size="sm" onClick={() => setShowInfo(false)}>Close</Button></>}
+      >
+        <div className="skm-info-dialog">
+          <div className="skm-info-grp">
+            <h4>Skill Ratings</h4>
+            {RATING_LABELS.map((label, i) => (
+              <div className="skm-rlevel" key={label}>
+                <span className="skm-rbadge" style={{ background: RATING_COLORS[i] }}>{i + 1}</span>
+                <div className="skm-rlevel-t"><strong>{label}</strong> — {RATING_DESC[i]}</div>
               </div>
-
-              <div>
-                <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
-                  Passion Areas
-                </div>
-                <div>
-                  Each consultant can have <strong style={{ color: 'var(--text-primary)' }}>one</strong> passion area. This represents the domain or technology they are most passionate about and want to grow in.
-                </div>
-              </div>
-
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                Click a cell to cycle through ratings (1 {'\u2192'} 2 {'\u2192'} 3 {'\u2192'} clear), or press 1/2/3 on your keyboard. Use arrow keys or Tab to navigate.
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-              <button
-                onClick={() => setShowInfo(false)}
-                style={{
-                  background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-muted)', padding: '0.4rem 0.85rem', fontSize: '0.8rem',
-                  fontWeight: 500, borderRadius: 4, cursor: 'pointer',
-                }}
-              >
-                Close
-              </button>
+            ))}
+          </div>
+          <div className="skm-info-grp">
+            <h4>Passion Areas</h4>
+            <div>
+              Each consultant can have <strong style={{ color: 'var(--text-primary)' }}>one</strong> passion area. This
+              represents the domain or technology they are most passionate about and want to grow in.
             </div>
           </div>
+          <div className="skm-info-hint">
+            Click a cell to cycle through ratings (1 → 2 → 3 → clear), or press 1/2/3 on your keyboard. Use arrow keys or Tab to navigate.
+          </div>
+        </div>
+      </Dialog>
+
+      {historyConsultant && (
+        <EngagementHistoryModal
+          consultant={historyConsultant}
+          onClose={() => setHistoryConsultant(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+interface AddPopoverProps {
+  title: string
+  placeholder: string
+  buttonLabel: string
+  value: string
+  onChange: (next: string) => void
+  onAdd: () => void
+  adding: boolean
+}
+
+function AddPopover({ title, placeholder, buttonLabel, value, onChange, onAdd, adding }: AddPopoverProps) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onPointer(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  function submit() {
+    if (!value.trim() || adding) return
+    onAdd()
+  }
+
+  return (
+    <div className="skm-addwrap" ref={rootRef}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="kanban-ghost"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span className="skm-add-plus" aria-hidden="true">+</span>{buttonLabel}
+      </Button>
+      {open && (
+        <div className="skm-addpop" role="dialog" aria-label={title}>
+          <div className="skm-addpop-t">{title}</div>
+          <div className="skm-addpop-row">
+            <Input
+              autoFocus
+              value={value}
+              placeholder={placeholder}
+              autoComplete="off"
+              onChange={e => onChange(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submit() }}
+            />
+            <Button variant="primary" size="sm" onClick={submit} loading={adding} disabled={!value.trim()}>Add</Button>
+          </div>
+          <div className="skm-addpop-hint">↵ to add · esc to cancel</div>
         </div>
       )}
     </div>

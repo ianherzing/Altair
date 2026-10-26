@@ -23,6 +23,16 @@ export const STATUS_LABELS: Record<string, string> = {
 
 export const STATUS_OPTIONS: RevenueStatus[] = ['to_do', 'soft_unconfirmed', 'soft_at_risk', 'hard_scheduled', 'active', 'done']
 
+/** Status dots and kanban column accents. Altair palette only — no cyan. */
+export const STATUS_COLORS: Record<RevenueStatus, string> = {
+  to_do: '#E8DBC0',
+  soft_unconfirmed: '#006C35',
+  soft_at_risk: '#C9654F',
+  hard_scheduled: '#B65540',
+  active: '#D6B25E',
+  done: '#3DDC84',
+}
+
 export const EMPTY_PROJECT_FORM = {
   client_name: '',
   project_name: '',

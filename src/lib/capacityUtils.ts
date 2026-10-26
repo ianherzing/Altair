@@ -3,7 +3,7 @@ import type { MonthBucket, ValueMode } from '../types/capacity'
 export const DEFAULT_BILL_RATE = 325
 
 export const COLOR_CAPACITY = '#8B95A5'
-export const COLOR_ASSIGNED = '#11C3DB'
+export const COLOR_ASSIGNED = '#D6B25E'
 
 export function quarterKey(monthKey: string): string {
   const [y, m] = monthKey.split('-').map(Number)

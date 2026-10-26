@@ -3,13 +3,12 @@ import { supabase } from '../lib/supabase'
 import { api } from '../lib/api'
 import { useLoadData } from '../lib/useLoadData'
 import { LoadingState } from '../components/LoadingState'
+import { PageTitle, Button } from '../components/ui'
+import { SearchableSelect } from '../components/SearchableSelect'
+import { RefreshClockwise } from '../components/icons/geist'
 import type { SyncLog as SyncLogRow } from '../types/database'
-
-const STATUS_COLORS: Record<string, string> = {
-  success: '#28A36A',
-  partial: '#F0642B',
-  error: '#E63948',
-}
+import { SyncLogSkeleton } from './SyncLogSkeleton'
+import './SyncLog.css'
 
 function humanizeType(type: string): string {
   return type
@@ -17,14 +16,26 @@ function humanizeType(type: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+const STATUS_CLASS: Record<string, string> = {
+  success: 'syl-pill--success',
+  partial: 'syl-pill--partial',
+  error: 'syl-pill--error',
+}
+
+function compareType(a: string, b: string): number {
+  return humanizeType(a).localeCompare(humanizeType(b))
+}
+
 export function SyncLog() {
   const [logs, setLogs] = useState<SyncLogRow[]>([])
   const [filterType, setFilterType] = useState<string>('')
   const [filterStatus, setFilterStatus] = useState<string>('')
+  const [asOf, setAsOf] = useState(() => Date.now())
 
   const { loading, error: loadError, retry } = useLoadData(async () => {
     const data = await api.getSyncLog()
     setLogs(data)
+    setAsOf(Date.now())
   }, [], 8000)
 
   useEffect(() => {
@@ -36,7 +47,7 @@ export function SyncLog() {
     return () => { mounted = false; supabase.removeChannel(channel) }
   }, [retry])
 
-  const allTypes = Array.from(new Set(logs.map((l) => l.sync_type))).sort()
+  const allTypes = Array.from(new Set(logs.map((l) => l.sync_type))).sort(compareType)
 
   const filtered = logs.filter((log) => {
     if (filterType && log.sync_type !== filterType) return false
@@ -44,15 +55,19 @@ export function SyncLog() {
     return true
   })
 
-  const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const last24h = new Date(asOf - 24 * 60 * 60 * 1000).toISOString()
   const recentLogs = logs.filter((l) => l.started_at >= last24h)
   const successCount = recentLogs.filter((l) => l.status === 'success').length
   const errorCount = recentLogs.filter((l) => l.status === 'error').length
   const partialCount = recentLogs.filter((l) => l.status === 'partial').length
 
+  const lastSyncByType = new Map<string, SyncLogRow>()
+  for (const log of logs) {
+    if (!lastSyncByType.has(log.sync_type)) lastSyncByType.set(log.sync_type, log)
+  }
+
   function formatTime(iso: string): string {
-    const d = new Date(iso)
-    return d.toLocaleString('en-US', {
+    return new Date(iso).toLocaleString('en-US', {
       month: 'short', day: 'numeric',
       hour: 'numeric', minute: '2-digit',
       hour12: true,
@@ -66,151 +81,178 @@ export function SyncLog() {
     return `${Math.round(ms / 60000)}m`
   }
 
-  if (loading || loadError) return <LoadingState loading={loading} error={loadError} retry={retry} message="Loading sync logs..." />
+  if (loading) return <SyncLogSkeleton />
+  if (loadError) return <LoadingState loading={false} error={loadError} retry={retry} message="Loading sync logs..." />
+
+  const grouped = new Map<string, SyncLogRow[]>()
+  for (const log of filtered) {
+    const list = grouped.get(log.sync_type) || []
+    list.push(log)
+    grouped.set(log.sync_type, list)
+  }
+  const orderedTypes = [...grouped.keys()].sort(compareType)
 
   return (
-    <div>
-      <h2>Sync Log</h2>
-
-      {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-        <SummaryCard label="Last 24 Hours" value={String(recentLogs.length)} sub="total syncs" />
-        <SummaryCard label="Successful" value={String(successCount)} sub="syncs" color="#28A36A" />
-        <SummaryCard label="Errors" value={String(errorCount)} sub="syncs" color={errorCount > 0 ? '#E63948' : undefined} />
-        <SummaryCard label="Partial" value={String(partialCount)} sub="syncs" color={partialCount > 0 ? '#F0642B' : undefined} />
+    <div className="syl">
+      <div className="syl-head">
+        <PageTitle title="Sync Log" style={{ margin: 0 }} />
+        <p className="syl-sub">Integration run history. Entries appear when an adapter writes to the sync log.</p>
       </div>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          style={filterStyle}
-        >
-          <option value="">All Types</option>
-          {allTypes.map((t) => (
-            <option key={t} value={t}>{humanizeType(t)}</option>
-          ))}
-        </select>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          style={filterStyle}
-        >
-          <option value="">All Statuses</option>
-          <option value="success">Success</option>
-          <option value="partial">Partial</option>
-          <option value="error">Error</option>
-        </select>
-        {(filterType || filterStatus) && (
-          <button
-            onClick={() => { setFilterType(''); setFilterStatus('') }}
-            style={{ ...filterStyle, cursor: 'pointer', color: 'var(--brand-green)', border: '1px solid var(--border)' }}
-          >
-            Clear
-          </button>
-        )}
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          {filtered.length} log{filtered.length !== 1 ? 's' : ''}
-        </span>
+      <div className="syl-kpis">
+        <div className="syl-kpi">
+          <div className="syl-kpi-label">Last 24 Hours</div>
+          <div className="syl-kpi-value">{recentLogs.length}</div>
+          <div className="syl-kpi-sub">total syncs</div>
+        </div>
+        <div className="syl-kpi">
+          <div className="syl-kpi-label"><span className="syl-dot syl-dot--success" aria-hidden="true" />Successful</div>
+          <div className="syl-kpi-value syl-v--success">{successCount}</div>
+          <div className="syl-kpi-sub">syncs</div>
+        </div>
+        <div className="syl-kpi">
+          <div className="syl-kpi-label"><span className="syl-dot syl-dot--partial" aria-hidden="true" />Partial</div>
+          <div className={`syl-kpi-value${partialCount ? ' syl-v--partial' : ''}`}>{partialCount}</div>
+          <div className="syl-kpi-sub">syncs</div>
+        </div>
+        <div className="syl-kpi">
+          <div className="syl-kpi-label"><span className="syl-dot syl-dot--error" aria-hidden="true" />Errors</div>
+          <div className={`syl-kpi-value${errorCount ? ' syl-v--error' : ''}`}>{errorCount}</div>
+          <div className="syl-kpi-sub">syncs</div>
+        </div>
       </div>
 
-      {/* Log table */}
-      {filtered.length === 0 ? (
-        <p style={{ color: 'var(--text-muted)' }}>
-          No sync logs yet. Wire an adapter that writes to the <code>sync_log</code> table and logs will appear here.
-        </p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Started</th>
-              <th>Duration</th>
-              <th>Processed</th>
-              <th>Created</th>
-              <th>Updated</th>
-              <th>Error</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((log) => (
-              <tr key={log.id}>
-                <td style={{ fontSize: '0.8rem' }}>{humanizeType(log.sync_type)}</td>
-                <td>
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.3rem',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    color: STATUS_COLORS[log.status] || 'var(--text-muted)',
-                  }}>
-                    <span style={{
-                      width: 7, height: 7, borderRadius: '50%',
-                      background: STATUS_COLORS[log.status] || '#888',
-                    }} />
-                    {log.status}
+      {allTypes.length > 0 && (
+        <div className="syl-strip">
+          <div className="syl-strip-t">Last sync by type</div>
+          {allTypes.map(type => {
+            const last = lastSyncByType.get(type)
+            return (
+              <div className="syl-ts-row" key={type}>
+                <span className="syl-ts-ico" aria-hidden="true"><RefreshClockwise size={15} /></span>
+                <span className="syl-ts-name">{humanizeType(type)}</span>
+                {last ? (
+                  <span className="syl-ts-last">
+                    <span className={`syl-dot ${STATUS_CLASS[last.status] ? 'syl-dot--' + last.status : ''}`} aria-hidden="true" />
+                    {formatTime(last.started_at)} · {last.status}
                   </span>
-                </td>
-                <td style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                  {formatTime(log.started_at)}
-                </td>
-                <td style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
-                  {log.completed_at ? formatDuration(log.started_at, log.completed_at) : '—'}
-                </td>
-                <td style={{ textAlign: 'center' }}>{log.records_processed}</td>
-                <td style={{ textAlign: 'center', color: log.records_created > 0 ? '#28A36A' : 'var(--text-muted)' }}>
-                  {log.records_created > 0 ? `+${log.records_created}` : '0'}
-                </td>
-                <td style={{ textAlign: 'center', color: log.records_updated > 0 ? '#11C3DB' : 'var(--text-muted)' }}>
-                  {log.records_updated > 0 ? log.records_updated : '0'}
-                </td>
-                <td style={{ fontSize: '0.75rem', color: '#E63948', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                  title={log.error_message || undefined}
-                >
-                  {log.error_message || ''}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                ) : (
+                  <span className="syl-ts-last syl-ts-never">Never run</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
+
+      <div className="syl-filters">
+        <SearchableSelect
+          variant="ghost"
+          value={filterType}
+          onChange={setFilterType}
+          options={[{ value: '', label: 'All Types' }, ...allTypes.map(t => ({ value: t, label: humanizeType(t) }))]}
+          placeholder="Type"
+        />
+        <SearchableSelect
+          variant="ghost"
+          value={filterStatus}
+          onChange={setFilterStatus}
+          options={[
+            { value: '', label: 'All Statuses' },
+            { value: 'success', label: 'Success' },
+            { value: 'partial', label: 'Partial' },
+            { value: 'error', label: 'Error' },
+          ]}
+          placeholder="Status"
+        />
+        {(filterType || filterStatus) && (
+          <Button variant="ghost" size="sm" onClick={() => { setFilterType(''); setFilterStatus('') }}>Clear</Button>
+        )}
+        <span className="syl-meta"><b>{filtered.length}</b> {filtered.length === 1 ? 'log' : 'logs'}</span>
+      </div>
+
+      <div className="syl-wrap">
+        {filtered.length === 0 ? (
+          <div className="syl-empty">
+            {logs.length === 0
+              ? <>No sync logs yet. Wire an adapter that writes to the <code>sync_log</code> table and logs will appear here.</>
+              : 'No sync logs match this filter.'}
+          </div>
+        ) : (
+          <table className="syl-table">
+            <colgroup>
+              <col className="syl-c-status" />
+              <col className="syl-c-started" />
+              <col className="syl-c-dur" />
+              <col className="syl-c-num" />
+              <col className="syl-c-num" />
+              <col className="syl-c-num" />
+              <col className="syl-c-err" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Duration</th>
+                <th className="syl-th-num">Processed</th>
+                <th className="syl-th-num">Created</th>
+                <th className="syl-th-num">Updated</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orderedTypes.map(type => (
+                <SectionRows
+                  key={type}
+                  type={type}
+                  items={grouped.get(type) || []}
+                  formatTime={formatTime}
+                  formatDuration={formatDuration}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
 
-function SummaryCard({ label, value, sub, color }: { label: string; value: string; sub: string; color?: string }) {
+interface SectionRowsProps {
+  type: string
+  items: SyncLogRow[]
+  formatTime: (iso: string) => string
+  formatDuration: (start: string, end: string) => string
+}
+
+function SectionRows({ type, items, formatTime, formatDuration }: SectionRowsProps) {
   return (
-    <div style={{
-      background: 'var(--bg-card)',
-      border: '1px solid var(--border-subtle)',
-      borderRadius: 8,
-      padding: '1rem 1.25rem',
-    }}>
-      <div style={{
-        fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)',
-        textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem',
-      }}>
-        {label}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
-        <span style={{ fontSize: '1.5rem', fontWeight: 700, color: color || 'var(--text-primary)' }}>
-          {value}
-        </span>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{sub}</span>
-      </div>
-    </div>
+    <>
+      <tr className="syl-sect">
+        <td colSpan={7}>
+          <div className="syl-sect-h">
+            <span className="syl-sect-ico" aria-hidden="true"><RefreshClockwise size={14} /></span>
+            <span className="syl-sect-nm">{humanizeType(type)}</span>
+            <span className="syl-sect-cnt">{items.length}</span>
+          </div>
+        </td>
+      </tr>
+      {items.map((log, i) => (
+        <tr key={log.id} className={i % 2 ? 'syl-zebra' : undefined}>
+          <td>
+            <span className={`syl-pill ${STATUS_CLASS[log.status] || ''}`}>
+              <span className="syl-pill-dot" aria-hidden="true" />
+              {log.status}
+            </span>
+          </td>
+          <td className="syl-started">{formatTime(log.started_at)}</td>
+          <td className="syl-dur">{log.completed_at ? formatDuration(log.started_at, log.completed_at) : '—'}</td>
+          <td className="syl-num">{log.records_processed}</td>
+          <td className={`syl-num${log.records_created > 0 ? ' syl-n--create' : ' syl-n--zero'}`}>{log.records_created > 0 ? `+${log.records_created}` : '0'}</td>
+          <td className={`syl-num${log.records_updated > 0 ? ' syl-n--update' : ' syl-n--zero'}`}>{log.records_updated > 0 ? log.records_updated : '0'}</td>
+          <td className={`syl-err${log.error_message ? '' : ' syl-err--none'}`} title={log.error_message || undefined}>{log.error_message || '—'}</td>
+        </tr>
+      ))}
+    </>
   )
-}
-
-const filterStyle: React.CSSProperties = {
-  padding: '0.35rem 0.6rem',
-  background: 'var(--bg-card)',
-  border: '1px solid var(--border-subtle)',
-  borderRadius: 4,
-  color: 'var(--text-primary)',
-  fontSize: '0.8rem',
-  colorScheme: 'dark',
 }

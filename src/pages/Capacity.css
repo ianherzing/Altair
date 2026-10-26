@@ -1,0 +1,253 @@
+/* ═══════════ Capacity — Vercel/Geist refresh ═══════════
+   Synonymous with the Revenue (.rv) and Margin (.mgn) dashboards: flat surfaces
+   (no card boxes), hairline framing, hierarchy through size + space. The hero is
+   a "headroom columns" chart (one assigned bar per period, a gray capacity
+   ceiling line + faint headroom track up to it, a red over-allocation cap above
+   the ceiling); a flat KPI row sits above and a full-width breakdown table below.
+   All rules scoped under .cap; token-only colors (CI lint scans this file). The
+   capacity/assigned hues have no token — they come inline from COLOR_CAPACITY /
+   COLOR_ASSIGNED in capacityUtils via the .tsx, same pattern as CAT_COLORS on
+   Revenue and the COLOR_* consts on Margin. The Utilization cell color (≥100%
+   red / else white) is applied inline from the .tsx. */
+
+.cap { max-width: 1400px; margin: 0 auto; }
+
+/* ───────── Header: title + info button + Monthly/Quarterly underline tabs ─────────
+   The tabs reuse the shared .view-tab pattern (index.css) for parity with
+   Revenue/Margin and Resourcing's By Engineer / By Project rail. */
+.cap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.cap-titlewrap { display: flex; align-items: center; gap: var(--space-2); }
+.cap-tabs { display: inline-flex; gap: var(--space-5); border-bottom: 1px solid var(--border-soft); }
+
+/* Circular "ⓘ" info button — built from the <Button variant="ghost"> primitive
+   (the design system has no InfoPopover that fits a modal-opening info icon;
+   InfoPopover is a panel-eyebrow inline tooltip). Mirrors the mockup's .info-btn. */
+.cap-info.ui-button {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.cap-info.ui-button:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+/* ───────── Filter bar — "Quiet Rails" ghost controls (Revenue/Margin parity) ───────── */
+.cap-filters {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+.cap-filters-spacer { margin-left: auto; }
+
+/* Hours / Revenue segmented control — built from two <Button> primitives in a
+   bordered shell; the active half lifts to --bg-elevated + primary text. */
+.cap-seg {
+  display: inline-flex;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+.cap-seg .ui-button {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-weight: 500;
+}
+.cap-seg .ui-button:hover:not(:disabled) { color: var(--text-primary); background: transparent; }
+.cap-seg .ui-button.cap-seg--on { background: var(--bg-elevated); color: var(--text-primary); }
+
+/* ───────── KPI summary — flat stat row, no card box ───────── */
+.cap-kpis {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+.cap-kpi { flex: 1; min-width: 0; padding: 0 var(--space-5); border-left: 1px solid var(--border-subtle); }
+.cap-kpi:first-child { border-left: none; padding-left: 0; }
+.cap-kpi-l {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.cap-kpi-dot { width: 7px; height: 7px; border-radius: var(--radius-pill); flex-shrink: 0; }
+.cap-kpi-v {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-top: var(--space-2);
+  letter-spacing: -0.01em;
+}
+
+/* ───────── Section headers (mirror .rv-sect / .mgn-sect) ───────── */
+.cap-sect { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); margin: 0 0 var(--space-3); }
+.cap-sect.gap { margin-top: var(--space-6); }
+.cap-sect h3 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.cap-cnt { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-muted); font-weight: 400; }
+
+/* ───────── Legend (static inline key) ───────── */
+.cap-legend { display: flex; gap: var(--space-4); align-items: center; }
+.cap-legend-i { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--text-secondary); }
+.cap-legend-sw { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* ───────── Chart — flat on true-black; scrolls only when needed ───────── */
+.cap-chart { position: relative; padding-top: var(--space-4); }
+.cap-chart-scroll { overflow-x: auto; overflow-y: hidden; }
+.cap-chart svg { display: block; }
+.cap-axis { fill: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.cap-xlabel { fill: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+.cap-vlabel { fill: var(--text-primary); font-family: var(--font-mono); font-size: 11px; }
+.cap-empty {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-7);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* Tooltip — own layer (anchored on mouseEnter; no SVG repaint on hover) */
+.cap-tip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 30;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  min-width: 200px;
+  box-shadow: 0 8px 24px color-mix(in srgb, transparent 55%, var(--bg-body));
+}
+.cap-tip-t { font-family: var(--font-display); font-weight: 600; color: var(--text-primary); font-size: var(--text-sm); margin-bottom: var(--space-2); }
+.cap-tip-r { display: flex; align-items: center; gap: var(--space-2); justify-content: space-between; margin: 3px 0; font-size: var(--text-sm); }
+.cap-tip-lab { display: flex; align-items: center; gap: var(--space-2); color: var(--text-secondary); }
+.cap-tip-sw { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.cap-tip-num { font-family: var(--font-mono); color: var(--text-primary); }
+.cap-tip-tot { border-top: 1px solid var(--border-subtle); margin-top: var(--space-2); padding-top: var(--space-2); font-weight: 600; }
+.cap-tip-hint { color: var(--text-muted); font-size: 10px; margin-top: var(--space-2); font-family: var(--font-mono); }
+
+/* ───────── Breakdown table (Revenue/Margin parity) ───────── */
+.cap-tbl-wrap { overflow: auto; border: 1px solid var(--border-soft); border-radius: var(--radius-lg); }
+.cap table { width: 100%; border-collapse: collapse; }
+.cap thead th {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  white-space: nowrap;
+  background: var(--bg-content);
+  border-bottom: 1px solid var(--border-soft);
+  position: sticky;
+  top: 0;
+  /* keep the pinned header above scrolling rows (their zebra/hover backgrounds
+     otherwise paint over a sticky header that has no stacking context) */
+  z-index: 2;
+}
+.cap th.num, .cap td.num { text-align: right; }
+/* The Utilization mix-tick column is the fluid grow column so the bar FILLS it
+   (no max-width cap) and the numbers sit tight-right. */
+.cap th.cap-mixhead, .cap td.cap-mix { width: 100%; }
+.cap tbody td {
+  padding: 0 var(--space-3);
+  height: 42px;
+  font-size: var(--text-base);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+.cap tbody tr:last-child td { border-bottom: none; }
+.cap tbody tr { transition: background var(--duration-fast) var(--ease-out); }
+.cap tbody tr:nth-child(2n) td { background: var(--card-inset); }
+.cap tbody tr:hover td { background: var(--bg-card); }
+.cap td.cap-c, .cap th.cap-c { font-family: var(--font-display); color: var(--text-primary); }
+.cap td.mono { font-family: var(--font-mono); }
+/* Available column reads primary white (not the muted body color) */
+.cap td.cap-amt { color: var(--text-primary); }
+.cap-drill { cursor: pointer; }
+.cap-drill:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* Total row reads white; the selector outweighs `.cap tbody td` so the label +
+   amounts aren't dragged to the muted body color; inline-colored cells still win. */
+.cap tbody tr.cap-tot td { border-top: 2px solid var(--border); border-bottom: none; font-weight: 700; color: var(--text-primary); background: transparent !important; }
+
+/* Utilization mix ticks — identical idiom to Revenue (.rv-tick) and Margin
+   (.mgn-tick): flat pill segments, no track/border, segments color-mixed toward
+   transparent. Assigned share (cyan) + Available headroom (white); over-allocation
+   adds a red overspend tick beyond 100%. Fills the column (no max-width cap). */
+.cap-tick { display: flex; gap: var(--space-1); height: 6px; width: 100%; }
+.cap-tick span { height: 100%; border-radius: var(--radius-pill); }
+
+/* ───────── Drilldown + Info (rendered inside the shared <Dialog> primitive,
+   which owns the overlay/panel chrome + spring entrance) ───────── */
+.cap-dempty { color: var(--text-muted); text-align: center; padding: var(--space-6) 0; }
+.cap-dd-sub { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); margin-bottom: var(--space-3); }
+/* Sticky header inside the Dialog: the shared .ui-dialog__body has
+   padding:var(--space-5), so a sticky top:0 header would pin 24px down with rows
+   peeking through. Zero the body's TOP padding when it holds our table, and move
+   the gap to the (non-scrolling) header — the verified Revenue.css :has() trick. */
+.ui-dialog__body:has(> .cap-drilltbl) { padding-top: 0; }
+.ui-dialog__header:has(~ .ui-dialog__body > .cap-drilltbl) { padding-bottom: var(--space-4); }
+
+/* "How this data is calculated" content blocks (rendered in a <Dialog>) */
+.cap-calc-grp { margin-bottom: var(--space-4); }
+.cap-calc-grp:last-child { margin-bottom: 0; }
+.cap-calc-lbl {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-2);
+}
+.cap-calc {
+  background: var(--bg-card-alt);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.cap-calc-foot { font-style: italic; color: var(--text-muted); font-size: var(--text-sm); margin-top: var(--space-3); }
